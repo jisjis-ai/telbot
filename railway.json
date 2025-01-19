@@ -4,12 +4,12 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "region": "af-south1",
+    "region": "asia-southeast1",
     "runtime": "V2",
     "numReplicas": 1,
     "sleepApplication": false,
     "multiRegionConfig": {
-      "af-south1": {
+      "asia-southeast1": {
         "numReplicas": 1
       }
     },
