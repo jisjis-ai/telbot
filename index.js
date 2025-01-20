@@ -292,13 +292,7 @@ class OperationsBot {
           break;
 
         // ... rest of the cases remain the same
-      }
-
-      this.adminSessions.set(chatId, session);
-    } catch (error) {
-      logError(`Erro ao processar mensagem: ${error}`);
-      await this.sendMessageWithRetry(chatId, '❌ Erro ao processar mensagem. Tente novamente.');
-    }
+    
   }
 
   async sendOperation() {
