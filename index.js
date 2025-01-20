@@ -79,6 +79,18 @@ class OperationsBot {
     this.forceOperating = false;
     this.customStartHour = START_HOUR;
     this.customEndHour = END_HOUR;
+    this.pinnedMessageId = null;
+    this.pinnedMessageTimer = null;
+    this.customButtons = {
+      button1: {
+        text: '🎯 Apostar Agora',
+        url: AFFILIATE_URL
+      },
+      button2: {
+        text: '📝 Criar Conta',
+        url: AFFILIATE_URL
+      }
+    };
 
     moment.tz.setDefault(TIMEZONE);
     
@@ -147,92 +159,6 @@ class OperationsBot {
       .catch(error => logError(`Erro ao enviar mensagem de teste: ${error}`));
   }
 
-  setupCallbackQueries() {
-    this.bot.on('callback_query', async (query) => {
-      console.log(ASCII_COMMAND);
-      logInfo(`Callback recebido: ${query.data}`);
-      
-      try {
-        const chatId = query.message.chat.id;
-        const session = this.adminSessions.get(chatId);
-
-        if (!session || session.step !== 'authenticated') {
-          await this.bot.answerCallbackQuery(query.id, { text: '⚠️ Acesso negado!' });
-          logWarning(`Tentativa de acesso não autorizado de ${chatId}`);
-          return;
-        }
-
-        switch (query.data) {
-          case 'start_ops':
-            this.isOperating = true;
-            await this.sendMessageWithRetry(chatId, '▶️ Operações iniciadas manualmente.');
-            logSuccess('Operações iniciadas manualmente');
-            this.scheduleNextOperation();
-            break;
-
-          case 'stop_ops':
-            this.isOperating = false;
-            if (this.operationTimeout) {
-              clearTimeout(this.operationTimeout);
-              this.operationTimeout = null;
-            }
-            await this.sendMessageWithRetry(chatId, '🛑 Operações pausadas manualmente.');
-            logWarning('Operações pausadas manualmente');
-            break;
-
-          case 'force_start':
-            this.forceOperating = true;
-            this.isOperating = true;
-            await this.sendMessageWithRetry(chatId, '⚡️ Modo força ativado - Operações iniciadas fora do horário.');
-            logWarning('Modo força ativado');
-            this.scheduleNextOperation();
-            break;
-
-          case 'force_stop':
-            this.forceOperating = false;
-            this.isOperating = false;
-            if (this.operationTimeout) {
-              clearTimeout(this.operationTimeout);
-              this.operationTimeout = null;
-            }
-            await this.sendMessageWithRetry(chatId, '🔒 Modo força desativado - Operações normalizadas.');
-            logSuccess('Modo força desativado');
-            break;
-        }
-
-        await this.bot.answerCallbackQuery(query.id);
-      } catch (error) {
-        logError(`Erro ao processar callback: ${error}`);
-      }
-    });
-  }
-
-  setupSchedules() {
-    logSystem('Configurando agendamentos...');
-    
-    schedule.scheduleJob('0 0 * * *', () => {
-      this.stats.dailyOperations = 0;
-      logInfo('Contador de operações diárias resetado');
-    });
-
-    schedule.scheduleJob('0 7 * * *', () => {
-      logInfo('Enviando mensagem pré-operações');
-      this.sendPreOperationsMessage();
-    });
-
-    schedule.scheduleJob(`0 ${this.customStartHour} * * *`, () => {
-      logInfo('Iniciando operações programadas');
-      this.startOperations();
-    });
-
-    schedule.scheduleJob(`0 ${this.customEndHour} * * *`, () => {
-      logInfo('Encerrando operações programadas');
-      this.endOperations();
-    });
-
-    logSuccess('Agendamentos configurados com sucesso');
-  }
-
   async sendMessageWithRetry(chatId, message, options = {}, maxRetries = 3) {
     for (let i = 0; i < maxRetries; i++) {
       try {
@@ -291,7 +217,61 @@ class OperationsBot {
           }
           break;
 
-        // ... rest of the cases remain the same
+        case 'waiting_announcement':
+          session.announcementText = text;
+          await this.sendMessageWithRetry(
+            chatId,
+            'Digite o texto para o primeiro botão:',
+            { reply_markup: { force_reply: true } }
+          );
+          session.step = 'waiting_button1_text';
+          break;
+
+        case 'waiting_button1_text':
+          session.button1Text = text;
+          await this.sendMessageWithRetry(
+            chatId,
+            'Digite o link para o primeiro botão:',
+            { reply_markup: { force_reply: true } }
+          );
+          session.step = 'waiting_button1_url';
+          break;
+
+        case 'waiting_button1_url':
+          session.button1Url = text;
+          await this.sendMessageWithRetry(
+            chatId,
+            'Digite o texto para o segundo botão:',
+            { reply_markup: { force_reply: true } }
+          );
+          session.step = 'waiting_button2_text';
+          break;
+
+        case 'waiting_button2_text':
+          session.button2Text = text;
+          await this.sendMessageWithRetry(
+            chatId,
+            'Digite o link para o segundo botão:',
+            { reply_markup: { force_reply: true } }
+          );
+          session.step = 'waiting_button2_url';
+          break;
+
+        case 'waiting_button2_url':
+          session.button2Url = text;
+          await this.sendAnnouncement(chatId, session);
+          session.step = 'authenticated';
+          break;
+
+        case 'waiting_pin_message':
+          await this.sendPinnedMessage(chatId, text);
+          session.step = 'authenticated';
+          break;
+
+        default:
+          session.step = 'authenticated';
+          await this.sendAdminMenu(chatId);
+          break;
       }
 
       this.adminSessions.set(chatId, session);
@@ -299,6 +279,178 @@ class OperationsBot {
       logError(`Erro ao processar mensagem: ${error}`);
       await this.sendMessageWithRetry(chatId, '❌ Erro ao processar mensagem. Tente novamente.');
     }
+  }
+
+  async handleAdminCommand(chatId, command) {
+    const session = this.adminSessions.get(chatId);
+    if (!session || session.step !== 'authenticated') {
+      await this.sendMessageWithRetry(chatId, '⚠️ Você precisa fazer login primeiro!');
+      return;
+    }
+
+    switch (command) {
+      case '/stats':
+        await this.sendStats(chatId);
+        break;
+      case '/menu':
+        await this.sendAdminMenu(chatId);
+        break;
+      case '/help':
+        await this.sendHelp(chatId);
+        break;
+      default:
+        await this.sendMessageWithRetry(chatId, '❌ Comando não reconhecido. Use /help para ver os comandos disponíveis.');
+    }
+  }
+
+  async sendAdminMenu(chatId) {
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '▶️ Iniciar Operações', callback_data: 'start_ops' },
+          { text: '⏹️ Parar Operações', callback_data: 'stop_ops' }
+        ],
+        [
+          { text: '⚡️ Forçar Início', callback_data: 'force_start' },
+          { text: '🔒 Parar Força', callback_data: 'force_stop' }
+        ],
+        [
+          { text: '📢 Enviar Comunicado', callback_data: 'send_announcement' },
+          { text: '⚙️ Configurar Botões', callback_data: 'config_buttons' }
+        ],
+        [
+          { text: '📌 Fixar Mensagem', callback_data: 'pin_message' },
+          { text: '📊 Ver Estatísticas', callback_data: 'view_stats' }
+        ]
+      ]
+    };
+
+    await this.sendMessageWithRetry(
+      chatId,
+      '🎮 *Painel de Controle*\n\n' +
+      '✅ Login realizado com sucesso!\n' +
+      '📊 Selecione uma opção abaixo:',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      }
+    );
+  }
+
+  setupCallbackQueries() {
+    this.bot.on('callback_query', async (query) => {
+      console.log(ASCII_COMMAND);
+      logInfo(`Callback recebido: ${query.data}`);
+      
+      try {
+        const chatId = query.message.chat.id;
+        const session = this.adminSessions.get(chatId);
+
+        if (!session || session.step !== 'authenticated') {
+          await this.bot.answerCallbackQuery(query.id, { text: '⚠️ Acesso negado!' });
+          logWarning(`Tentativa de acesso não autorizado de ${chatId}`);
+          return;
+        }
+
+        switch (query.data) {
+          case 'start_ops':
+            this.isOperating = true;
+            await this.sendMessageWithRetry(chatId, '▶️ Operações iniciadas manualmente.');
+            logSuccess('Operações iniciadas manualmente');
+            this.scheduleNextOperation();
+            break;
+
+          case 'stop_ops':
+            this.isOperating = false;
+            if (this.operationTimeout) {
+              clearTimeout(this.operationTimeout);
+              this.operationTimeout = null;
+            }
+            await this.sendMessageWithRetry(chatId, '🛑 Operações pausadas manualmente.');
+            logWarning('Operações pausadas manualmente');
+            break;
+
+          case 'force_start':
+            this.forceOperating = true;
+            this.isOperating = true;
+            await this.sendMessageWithRetry(chatId, '⚡️ Modo força ativado - Operações iniciadas fora do horário.');
+            logWarning('Modo força ativado');
+            this.scheduleNextOperation();
+            break;
+
+          case 'force_stop':
+            this.forceOperating = false;
+            this.isOperating = false;
+            if (this.operationTimeout) {
+              clearTimeout(this.operationTimeout);
+              this.operationTimeout = null;
+            }
+            await this.sendMessageWithRetry(chatId, '🔒 Modo força desativado - Operações normalizadas.');
+            logSuccess('Modo força desativado');
+            break;
+
+          case 'send_announcement':
+            await this.sendMessageWithRetry(
+              chatId,
+              'Digite o texto do comunicado:',
+              { reply_markup: { force_reply: true } }
+            );
+            session.step = 'waiting_announcement';
+            break;
+
+          case 'config_buttons':
+            await this.sendButtonConfig(chatId);
+            break;
+
+          case 'pin_message':
+            await this.sendMessageWithRetry(
+              chatId,
+              'Digite a mensagem que deseja fixar:',
+              { reply_markup: { force_reply: true } }
+            );
+            session.step = 'waiting_pin_message';
+            break;
+
+          case 'view_stats':
+            await this.sendStats(chatId);
+            break;
+
+          case 'back_to_menu':
+            await this.sendAdminMenu(chatId);
+            break;
+        }
+
+        await this.bot.answerCallbackQuery(query.id);
+      } catch (error) {
+        logError(`Erro ao processar callback: ${error}`);
+      }
+    });
+  }
+
+  setupSchedules() {
+    logSystem('Configurando agendamentos...');
+    
+    schedule.scheduleJob('0 0 * * *', () => {
+      this.stats.dailyOperations = 0;
+      logInfo('Contador de operações diárias resetado');
+    });
+
+    schedule.scheduleJob('0 7 * * *', () => {
+      logInfo('Enviando mensagem pré-operações');
+      this.sendPreOperationsMessage();
+    });
+
+    schedule.scheduleJob(`0 ${this.customStartHour} * * *`, () => {
+      logInfo('Iniciando operações programadas');
+      this.startOperations();
+    });
+
+    schedule.scheduleJob(`0 ${this.customEndHour} * * *`, () => {
+      logInfo('Encerrando operações programadas');
+      this.endOperations();
+    });
+
+    logSuccess('Agendamentos configurados com sucesso');
   }
 
   async sendOperation() {
@@ -309,8 +461,8 @@ class OperationsBot {
       const multiplier = (Math.random() * (6.99 - 1.00) + 1.00).toFixed(2);
       const keyboard = {
         inline_keyboard: [
-          [{ text: '🎯 Apostar Agora', url: AFFILIATE_URL }],
-          [{ text: '📝 Criar Conta', url: AFFILIATE_URL }]
+          [{ text: this.customButtons.button1.text, url: this.customButtons.button1.url }],
+          [{ text: this.customButtons.button2.text, url: this.customButtons.button2.url }]
         ]
       };
 
@@ -342,7 +494,196 @@ class OperationsBot {
     }
   }
 
-  // ... rest of the methods remain the same
+  async sendResult() {
+    try {
+      const isGreen = Math.random() > 0.2; // 80% chance of green
+      if (isGreen) this.stats.greenOperations++;
+
+      await this.sendMessageWithRetry(
+        this.channelId,
+        `${isGreen ? '✅ GREEN!' : '🔴 RED!'}\n\n` +
+        `${isGreen ? '💰 RESULTADO: LUCRO!' : '📊 GERENCIAMENTO: PRÓXIMA!'}`,
+        { parse_mode: 'Markdown' }
+      );
+
+      this.scheduleNextOperation();
+    } catch (error) {
+      logError(`Erro ao enviar resultado: ${error}`);
+      this.scheduleNextOperation();
+    }
+  }
+
+  scheduleNextOperation() {
+    if (!this.isOperating) return;
+
+    const now = moment();
+    const hour = now.hour();
+
+    if ((hour >= this.customStartHour && hour < this.customEndHour) || this.forceOperating) {
+      const delay = Math.floor(Math.random() * (180000 - 60000) + 60000); // 1-3 minutes
+      this.operationTimeout = setTimeout(() => this.sendOperation(), delay);
+      logInfo(`Próxima operação agendada para ${moment().add(delay, 'milliseconds').format('HH:mm:ss')}`);
+    } else {
+      this.isOperating = false;
+      logInfo('Fora do horário de operações');
+    }
+  }
+
+  async sendAnnouncement(chatId, session) {
+    try {
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: session.button1Text, url: session.button1Url }],
+          [{ text: session.button2Text, url: session.button2Url }]
+        ]
+      };
+
+      const message = await this.sendMessageWithRetry(
+        this.channelId,
+        session.announcementText,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: keyboard
+        }
+      );
+
+      await this.sendMessageWithRetry(
+        chatId,
+        '✅ Comunicado enviado com sucesso!\n\nDeseja fixar esta mensagem por 24 horas?',
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Sim', callback_data: `pin_${message.message_id}` },
+                { text: '❌ Não', callback_data: 'no_pin' }
+              ]
+            ]
+          }
+        }
+      );
+    } catch (error) {
+      logError(`Erro ao enviar comunicado: ${error}`);
+      await this.sendMessageWithRetry(chatId, '❌ Erro ao enviar comunicado. Tente novamente.');
+    }
+  }
+
+  async sendPinnedMessage(chatId, text) {
+    try {
+      // Unpin previous message if exists
+      if (this.pinnedMessageId) {
+        await this.bot.unpinChatMessage(this.channelId, this.pinnedMessageId);
+      }
+
+      // Clear previous timer if exists
+      if (this.pinnedMessageTimer) {
+        clearTimeout(this.pinnedMessageTimer);
+      }
+
+      // Send and pin new message
+      const message = await this.sendMessageWithRetry(this.channelId, text, { parse_mode: 'Markdown' });
+      await this.bot.pinChatMessage(this.channelId, message.message_id);
+      
+      this.pinnedMessageId = message.message_id;
+
+      // Schedule unpin after 24 hours
+      this.pinnedMessageTimer = setTimeout(async () => {
+        try {
+          await this.bot.unpinChatMessage(this.channelId, this.pinnedMessageId);
+          this.pinnedMessageId = null;
+        } catch (error) {
+          logError(`Erro ao desfixar mensagem: ${error}`);
+        }
+      }, 24 * 60 * 60 * 1000);
+
+      await this.sendMessageWithRetry(chatId, '✅ Mensagem fixada com sucesso! Será desfixada automaticamente em 24 horas.');
+    } catch (error) {
+      logError(`Erro ao fixar mensagem: ${error}`);
+      await this.sendMessageWithRetry(chatId, '❌ Erro ao fixar mensagem. Tente novamente.');
+    }
+  }
+
+  async sendStats(chatId) {
+    const uptime = moment.duration(Date.now() - this.startTime).humanize();
+    const stats = `📊 *Estatísticas do Bot*\n\n` +
+      `🕒 Tempo online: ${uptime}\n` +
+      `📨 Mensagens enviadas: ${this.stats.messagesSent}\n` +
+      `🎯 Total de operações: ${this.stats.totalOperations}\n` +
+      `📈 Operações hoje: ${this.stats.dailyOperations}\n` +
+      `✅ Operações green: ${this.stats.greenOperations}`;
+
+    await this.sendMessageWithRetry(chatId, stats, { parse_mode: 'Markdown' });
+  }
+
+  async sendHelp(chatId) {
+    const help = `🤖 *Comandos Disponíveis*\n\n` +
+      `📌 *Comandos Básicos*\n` +
+      `/start - Iniciar o bot\n` +
+      `/menu - Mostrar menu principal\n` +
+      `/stats - Ver estatísticas\n` +
+      `/help - Mostrar esta ajuda\n\n` +
+      `⚙️ *Funções do Menu*\n` +
+      `• Iniciar/Parar operações\n` +
+      `• Forçar início/parada\n` +
+      `• Enviar comunicados\n` +
+      `• Configurar botões\n` +
+      `• Fixar mensagens\n` +
+      `• Ver estatísticas`;
+
+    await this.sendMessageWithRetry(chatId, help, { parse_mode: 'Markdown' });
+  }
+
+  async sendButtonConfig(chatId) {
+    const config = `⚙️ *Configuração Atual dos Botões*\n\n` +
+      `*Botão 1:*\n` +
+      `Texto: ${this.customButtons.button1.text}\n` +
+      `Link: ${this.customButtons.button1.url}\n\n` +
+      `*Botão 2:*\n` +
+      `Texto: ${this.customButtons.button2.text}\n` +
+      `Link: ${this.customButtons.button2.url}`;
+
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: '✏️ Editar Botão 1', callback_data: 'edit_button1' }],
+        [{ text: '✏️ Editar Botão 2', callback_data: 'edit_button2' }],
+        [{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]
+      ]
+    };
+
+    await this.sendMessageWithRetry(chatId, config, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+  }
+
+  async sendPreOperationsMessage() {
+    try {
+      await this.sendMessageWithRetry(
+        this.channelId,
+        '🌅 *BOM DIA, FAMÍLIA!*\n\n' +
+        '⏰ Preparados para mais um dia de operações?\n' +
+        '💰 Hoje teremos muitas oportunidades!\n\n' +
+        '⚠️ Fiquem atentos aos sinais!',
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      logError(`Erro ao enviar mensagem pré-operações: ${error}`);
+    }
+  }
+
+  startOperations() {
+    this.isOperating = true;
+    this.scheduleNextOperation();
+    logSuccess('Operações iniciadas automaticamente');
+  }
+
+  endOperations() {
+    this.isOperating = false;
+    if (this.operationTimeout) {
+      clearTimeout(this.operationTimeout);
+      this.operationTimeout = null;
+    }
+    logSuccess('Operações encerradas automaticamente');
+  }
 }
 
 try {
