@@ -69,7 +69,6 @@ class OperationsBot {
     this.isOperating = false;
     this.stats = {
       totalOperations: 0,
-      greenOperations: 0,
       messagesSent: 0,
       dailyOperations: 0
     };
@@ -298,6 +297,15 @@ class OperationsBot {
       case '/help':
         await this.sendHelp(chatId);
         break;
+      case '/report':
+        await this.sendDailyReport(chatId);
+        break;
+      case '/morning':
+        await this.sendMorningMotivation();
+        break;
+      case '/night':
+        await this.sendNightBlessing();
+        break;
       default:
         await this.sendMessageWithRetry(chatId, '❌ Comando não reconhecido. Use /help para ver os comandos disponíveis.');
     }
@@ -321,6 +329,10 @@ class OperationsBot {
         [
           { text: '📌 Fixar Mensagem', callback_data: 'pin_message' },
           { text: '📊 Ver Estatísticas', callback_data: 'view_stats' }
+        ],
+        [
+          { text: '🌅 Mensagem Motivacional', callback_data: 'morning_motivation' },
+          { text: '🌙 Bênção Noturna', callback_data: 'night_blessing' }
         ]
       ]
     };
@@ -415,6 +427,16 @@ class OperationsBot {
             await this.sendStats(chatId);
             break;
 
+          case 'morning_motivation':
+            await this.sendMorningMotivation();
+            await this.sendMessageWithRetry(chatId, '✅ Mensagem motivacional enviada com sucesso!');
+            break;
+
+          case 'night_blessing':
+            await this.sendNightBlessing();
+            await this.sendMessageWithRetry(chatId, '✅ Bênção noturna enviada com sucesso!');
+            break;
+
           case 'back_to_menu':
             await this.sendAdminMenu(chatId);
             break;
@@ -430,24 +452,34 @@ class OperationsBot {
   setupSchedules() {
     logSystem('Configurando agendamentos...');
     
+    // Reset daily stats at midnight
     schedule.scheduleJob('0 0 * * *', () => {
       this.stats.dailyOperations = 0;
       logInfo('Contador de operações diárias resetado');
     });
 
+    // Morning motivation at 7 AM
     schedule.scheduleJob('0 7 * * *', () => {
-      logInfo('Enviando mensagem pré-operações');
-      this.sendPreOperationsMessage();
+      logInfo('Enviando mensagem motivacional matinal');
+      this.sendMorningMotivation();
     });
 
+    // Start operations at configured start hour
     schedule.scheduleJob(`0 ${this.customStartHour} * * *`, () => {
       logInfo('Iniciando operações programadas');
       this.startOperations();
     });
 
+    // End operations at configured end hour
     schedule.scheduleJob(`0 ${this.customEndHour} * * *`, () => {
       logInfo('Encerrando operações programadas');
       this.endOperations();
+    });
+
+    // Night blessing at 20:00
+    schedule.scheduleJob('0 20 * * *', () => {
+      logInfo('Enviando bênção noturna');
+      this.sendNightBlessing();
     });
 
     logSuccess('Agendamentos configurados com sucesso');
@@ -458,7 +490,7 @@ class OperationsBot {
 
     try {
       console.log(ASCII_OPERATION);
-      const multiplier = (Math.random() * (10.99 - 1.00) + 1.00).toFixed(2);
+      const multiplier = (Math.random() * (20.99 - 1.00) + 1.00).toFixed(2);
       const keyboard = {
         inline_keyboard: [
           [{ text: this.customButtons.button1.text, url: this.customButtons.button1.url }],
@@ -496,13 +528,10 @@ class OperationsBot {
 
   async sendResult() {
     try {
-      const isGreen = Math.random() > 0.2; // 80% chance of green
-      if (isGreen) this.stats.greenOperations++;
-
       await this.sendMessageWithRetry(
         this.channelId,
-        `${isGreen ? '✅ GREEN!' : '🔴 RED!'}\n\n` +
-        `${isGreen ? '💰 RESULTADO: LUCRO!' : '📊 GERENCIAMENTO: PRÓXIMA!'}`,
+        `🔄 *OPERAÇÃO ENCERRADA*\n\n` +
+        `📊 Próxima operação em breve!`,
         { parse_mode: 'Markdown' }
       );
 
@@ -609,7 +638,9 @@ class OperationsBot {
       `📨 Mensagens enviadas: ${this.stats.messagesSent}\n` +
       `🎯 Total de operações: ${this.stats.totalOperations}\n` +
       `📈 Operações hoje: ${this.stats.dailyOperations}\n` +
-      `✅ Operações green: ${this.stats.greenOperations}`;
+      `⏰ Horário de funcionamento: ${this.customStartHour}:00 - ${this.customEndHour}:00\n` +
+      `✅ Status: ${this.isOperating ? 'Em operação' : 'Pausado'}\n` +
+      `⚡️ Modo Força: ${this.forceOperating ? 'Ativado' : 'Desativado'}`;
 
     await this.sendMessageWithRetry(chatId, stats, { parse_mode: 'Markdown' });
   }
@@ -620,6 +651,9 @@ class OperationsBot {
       `/start - Iniciar o bot\n` +
       `/menu - Mostrar menu principal\n` +
       `/stats - Ver estatísticas\n` +
+      `/report - Relatório diário\n` +
+      `/morning - Enviar mensagem motivacional\n` +
+      `/night - Enviar bênção noturna\n` +
       `/help - Mostrar esta ajuda\n\n` +
       `⚙️ *Funções do Menu*\n` +
       `• Iniciar/Parar operações\n` +
@@ -627,7 +661,9 @@ class OperationsBot {
       `• Enviar comunicados\n` +
       `• Configurar botões\n` +
       `• Fixar mensagens\n` +
-      `• Ver estatísticas`;
+      `• Ver estatísticas\n` +
+      `• Mensagens motivacionais\n` +
+      `• Bênçãos noturnas`;
 
     await this.sendMessageWithRetry(chatId, help, { parse_mode: 'Markdown' });
   }
@@ -655,19 +691,64 @@ class OperationsBot {
     });
   }
 
-  async sendPreOperationsMessage() {
-    try {
-      await this.sendMessageWithRetry(
-        this.channelId,
-        '🌅 *BOM DIA, FAMÍLIA!*\n\n' +
-        '⏰ Preparados para mais um dia de operações?\n' +
-        '💰 Hoje teremos muitas oportunidades!\n\n' +
-        '⚠️ Fiquem atentos aos sinais!',
-        { parse_mode: 'Markdown' }
-      );
-    } catch (error) {
-      logError(`Erro ao enviar mensagem pré-operações: ${error}`);
-    }
+  async sendMorningMotivation() {
+    const motivationalMessages = [
+      "🌅 *BOM DIA, FAMÍLIA!*\n\n" +
+      "🙏 Que hoje seja um dia de vitórias e conquistas!\n" +
+      "💪 Mantenha o foco e a disciplina\n" +
+      "✨ Sua dedicação será recompensada!",
+
+      "🌞 *COMEÇANDO MAIS UM DIA DE SUCESSO!*\n\n" +
+      "🎯 Defina suas metas\n" +
+      "📈 Siga sua estratégia\n" +
+      "💫 Acredite no seu potencial",
+
+      "🌄 *NOVO DIA, NOVAS OPORTUNIDADES!*\n\n" +
+      "⭐️ Sua persistência é sua força\n" +
+      "🚀 Vamos em busca dos objetivos\n" +
+      "✨ O sucesso é construído dia após dia"
+    ];
+
+    const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
+    await this.sendMessageWithRetry(this.channelId, randomMessage, { parse_mode: 'Markdown' });
+  }
+
+  async sendNightBlessing() {
+    const blessings = [
+      "🌙 *BOA NOITE, FAMÍLIA!*\n\n" +
+      "✨ \"O Senhor te abençoe e te guarde.\" - Números 6:24\n\n" +
+      "🙏 Que sua noite seja abençoada e seu descanso renovador.",
+
+      "🌠 *MOMENTO DE GRATIDÃO*\n\n" +
+      "✝️ \"Em paz me deito e logo pego no sono, porque só tu, Senhor, me fazes viver em segurança.\" - Salmos 4:8\n\n" +
+      "🙏 Descanse em paz e renove suas energias.",
+
+      "🌜 *BÊNÇÃO NOTURNA*\n\n" +
+      "🙏 \"O Senhor é o meu pastor; nada me faltará.\" - Salmos 23:1\n\n" +
+      "✨ Que Deus proteja seu sono e abençoe seu despertar."
+    ];
+
+    const randomBlessing = blessings[Math.floor(Math.random() * blessings.length)]; await this.sendMessageWithRetry(this.channelId, randomBlessing, { parse_mode: 'Markdown' });
+  }
+
+  async sendDailyReport(chatId) {
+    const report = 
+      `📈 *RELATÓRIO DIÁRIO*\n\n` +
+      `📊 *Estatísticas de Hoje:*\n` +
+      `▫️ Operações realizadas: ${this.stats.dailyOperations}\n` +
+      `▫️ Mensagens enviadas: ${this.stats.messagesSent}\n\n` +
+      `⏰ *Horário de Funcionamento:*\n` +
+      `▫️ Início: ${this.customStartHour}:00\n` +
+      `▫️ Fim: ${this.customEndHour}:00\n\n` +
+      `✅ Status: ${this.isOperating ? 'Em operação' : 'Pausado'}\n` +
+      `⚡️ Modo Força: ${this.forceOperating ? 'Ativado' : 'Desativado'}`;
+
+    await this.sendMessageWithRetry(chatId, report, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
+    });
   }
 
   startOperations() {
