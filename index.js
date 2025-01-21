@@ -458,7 +458,7 @@ class OperationsBot {
 
     try {
       console.log(ASCII_OPERATION);
-      const multiplier = (Math.random() * (6.99 - 1.00) + 1.00).toFixed(2);
+      const multiplier = (Math.random() * (10.99 - 1.00) + 1.00).toFixed(2);
       const keyboard = {
         inline_keyboard: [
           [{ text: this.customButtons.button1.text, url: this.customButtons.button1.url }],
