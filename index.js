@@ -662,8 +662,149 @@ class OperationsBot {
       "✨ Siga em frente com fé!",
 
       "🌅 *MANHÃ DE ESPERANÇA*\n\n" +
-      "\"Porque para Deus nada é impossível.\" - Lucas 1:37\n\n" +
+      "\"Porque para "\"Porque para Deus nada é impossível.\" - Lucas 1:37\n\n" +
       "🙏 Confie no tempo de Deus\n" +
       "💫 Seus sonhos são possíveis\n" +
       "✨ Mantenha sua fé viva!"
     ];
+
+    const randomIndex = Math.floor(Math.random() * messages.length);
+    const message = messages[randomIndex];
+
+    await this.sendMessageWithRetry(this.channelId, message, {
+      parse_mode: 'Markdown'
+    });
+  }
+
+  async sendNightBlessing() {
+    const message = 
+      "🌙 *BÊNÇÃO NOTURNA*\n\n" +
+      "\"O Senhor te abençoe e te guarde; o Senhor faça resplandecer o seu rosto sobre ti e te conceda graça; o Senhor volte para ti o seu rosto e te dê paz.\" - Números 6:24-26\n\n" +
+      "✨ Que sua noite seja abençoada\n" +
+      "🙏 Descanse em paz\n" +
+      "💫 Amanhã será um novo dia de vitórias!";
+
+    await this.sendMessageWithRetry(this.channelId, message, {
+      parse_mode: 'Markdown'
+    });
+  }
+
+  startOperations() {
+    if (this.maintenanceMode) {
+      logWarning('Tentativa de iniciar operações durante manutenção');
+      return;
+    }
+
+    this.isOperating = true;
+    this.scheduleNextOperation();
+    logSuccess('Operações iniciadas');
+  }
+
+  endOperations() {
+    this.isOperating = false;
+    if (this.operationTimeout) {
+      clearTimeout(this.operationTimeout);
+      this.operationTimeout = null;
+    }
+    logInfo('Operações encerradas');
+  }
+
+  setupCallbackQueries() {
+    this.bot.on('callback_query', async (query) => {
+      const chatId = query.message.chat.id;
+      const session = this.adminSessions.get(chatId);
+
+      if (!session || session.step !== 'authenticated') {
+        await this.bot.answerCallbackQuery(query.id, {
+          text: '⚠️ Você precisa fazer login primeiro!',
+          show_alert: true
+        });
+        return;
+      }
+
+      try {
+        switch (query.data) {
+          case 'maintenance_on':
+            this.maintenanceMode = true;
+            this.stats.maintenanceCount++;
+            this.stats.lastMaintenanceDate = moment().format('DD/MM/YYYY HH:mm:ss');
+            await this.sendMessageWithRetry(this.channelId, '🔧 *SISTEMA EM MANUTENÇÃO*\n\nOperações temporariamente suspensas.', { parse_mode: 'Markdown' });
+            break;
+
+          case 'maintenance_off':
+            this.maintenanceMode = false;
+            await this.sendMessageWithRetry(this.channelId, '✅ *SISTEMA OPERACIONAL*\n\nOperações normalizadas.', { parse_mode: 'Markdown' });
+            break;
+
+          case 'force_start':
+            this.forceOperating = true;
+            this.startOperations();
+            break;
+
+          case 'force_stop':
+            this.forceOperating = false;
+            if (!this.isInOperatingHours()) {
+              this.endOperations();
+            }
+            break;
+
+          case 'send_announcement':
+            session.step = 'waiting_announcement';
+            await this.sendMessageWithRetry(chatId, 'Digite o texto do comunicado:', { reply_markup: { force_reply: true } });
+            break;
+
+          case 'config_buttons':
+            session.step = 'waiting_button1_text';
+            await this.sendMessageWithRetry(chatId, 'Digite o texto para o primeiro botão:', { reply_markup: { force_reply: true } });
+            break;
+
+          case 'pin_message':
+            session.step = 'waiting_pin_message';
+            await this.sendMessageWithRetry(chatId, 'Digite a mensagem que deseja fixar:', { reply_markup: { force_reply: true } });
+            break;
+
+          case 'view_stats':
+            await this.sendStats(chatId);
+            break;
+
+          case 'send_early_motivation':
+            await this.sendEarlyMotivation();
+            break;
+
+          case 'send_night_blessing':
+            await this.sendNightBlessing();
+            break;
+
+          case 'system_info':
+            await this.sendSystemInfo(chatId);
+            break;
+
+          case 'maintenance_stats':
+            await this.sendMaintenanceStats(chatId);
+            break;
+
+          case 'back_to_menu':
+            await this.sendAdminMenu(chatId);
+            break;
+        }
+
+        await this.bot.answerCallbackQuery(query.id);
+        this.adminSessions.set(chatId, session);
+      } catch (error) {
+        logError(`Erro ao processar callback query: ${error}`);
+        await this.bot.answerCallbackQuery(query.id, {
+          text: '❌ Erro ao processar comando',
+          show_alert: true
+        });
+      }
+    });
+  }
+
+  isInOperatingHours() {
+    const currentHour = moment().hour();
+    return currentHour >= this.customStartHour && currentHour < this.customEndHour;
+  }
+}
+
+// Initialize the bot
+const bot = new OperationsBot(TOKEN, CHANNEL_ID);
