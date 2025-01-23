@@ -7,6 +7,7 @@ const TOKEN = '5847731188:AAF2vTmLyBHvdBYY4LSgJYQFqdbBL5IrSMY';
 const CHANNEL_ID = -1002003497082;
 const START_HOUR = 8;
 const END_HOUR = 19;
+const EARLY_MOTIVATION_HOUR = 5;
 const ADMIN_USERNAME = '007';
 const ADMIN_PASSWORD = '006007';
 const AFFILIATE_URL = 'https://media1.placard.co.mz/redirect.aspx?pid=2197&bid=1690';
@@ -25,7 +26,7 @@ const consoleStyle = {
 // Enhanced ASCII Art
 const ASCII_LOGO = `
 ${consoleStyle.system}╔══════════════════════════════════════════════════════╗
-║             🤖 QUANTUM SIGNALS BOT v2.0              ║
+║             🤖 QUANTUM SIGNALS BOT v2.1              ║
 ║        [ SISTEMA QUANTUM INICIADO COM SUCESSO ]      ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
@@ -50,6 +51,11 @@ ${consoleStyle.success}╔══════════════════
 ║           🎯 NOVA OPERAÇÃO INICIADA                 ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
+const ASCII_MAINTENANCE = `
+${consoleStyle.warning}╔══════════════════════════════════════════════════════╗
+║           🔧 MODO MANUTENÇÃO ATIVADO                ║
+╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
+
 // Console logging functions
 const logSystem = (message) => console.log(`${consoleStyle.system}[SISTEMA] ➤ ${message}${consoleStyle.reset}`);
 const logError = (message) => console.log(`${consoleStyle.error}[ERRO] ➤ ${message}${consoleStyle.reset}`);
@@ -67,10 +73,14 @@ class OperationsBot {
     this.bot = new TelegramBot(token, { polling: true });
     this.channelId = channelId;
     this.isOperating = false;
+    this.maintenanceMode = false;
     this.stats = {
       totalOperations: 0,
       messagesSent: 0,
-      dailyOperations: 0
+      dailyOperations: 0,
+      maintenanceCount: 0,
+      lastMaintenanceDate: null,
+      systemUptime: Date.now()
     };
     this.adminSessions = new Map();
     this.startTime = Date.now();
@@ -100,6 +110,12 @@ class OperationsBot {
     this.setupCommands();
     this.setupSchedules();
     this.setupCallbackQueries();
+
+    // Iniciar operações automaticamente se estiver dentro do horário
+    const currentHour = moment().hour();
+    if (currentHour >= START_HOUR && currentHour < END_HOUR) {
+      this.startOperations();
+    }
 
     logSuccess('Sistema Quantum totalmente operacional!');
   }
@@ -315,8 +331,8 @@ class OperationsBot {
     const keyboard = {
       inline_keyboard: [
         [
-          { text: '▶️ Iniciar Operações', callback_data: 'start_ops' },
-          { text: '⏹️ Parar Operações', callback_data: 'stop_ops' }
+          { text: '🔧 Ativar Manutenção', callback_data: 'maintenance_on' },
+          { text: '✅ Desativar Manutenção', callback_data: 'maintenance_off' }
         ],
         [
           { text: '⚡️ Forçar Início', callback_data: 'force_start' },
@@ -331,166 +347,74 @@ class OperationsBot {
           { text: '📊 Ver Estatísticas', callback_data: 'view_stats' }
         ],
         [
-          { text: '🌅 Mensagem Motivacional', callback_data: 'morning_motivation' },
-          { text: '🌙 Bênção Noturna', callback_data: 'night_blessing' }
+          { text: '🌅 Motivação Madrugada', callback_data: 'send_early_motivation' },
+          { text: '🌙 Bênção Noturna', callback_data: 'send_night_blessing' }
+        ],
+        [
+          { text: '💻 Info Sistema', callback_data: 'system_info' },
+          { text: '🔧 Stats Manutenção', callback_data: 'maintenance_stats' }
         ]
       ]
     };
 
-    await this.sendMessageWithRetry(
-      chatId,
-      '🎮 *Painel de Controle*\n\n' +
-      '✅ Login realizado com sucesso!\n' +
-      '📊 Selecione uma opção abaixo:',
-      {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-      }
-    );
+    const status = 
+      `🤖 *Painel de Controle v2.1*\n\n` +
+      `📊 *Status Atual:*\n` +
+      `${this.maintenanceMode ? '🔧 Em Manutenção' : '✅ Operacional'}\n` +
+      `${this.isOperating ? '▶️ Operando' : '⏹️ Pausado'}\n` +
+      `${this.forceOperating ? '⚡️ Modo Força Ativo' : '🔒 Modo Normal'}\n\n` +
+      `⏰ Horário: ${this.customStartHour}:00 - ${this.customEndHour}:00`;
+
+    await this.sendMessageWithRetry(chatId, status, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
   }
 
-  setupCallbackQueries() {
-    this.bot.on('callback_query', async (query) => {
-      console.log(ASCII_COMMAND);
-      logInfo(`Callback recebido: ${query.data}`);
-      
-      try {
-        const chatId = query.message.chat.id;
-        const session = this.adminSessions.get(chatId);
+  async sendSystemInfo(chatId) {
+    const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
+    const info = 
+      `💻 *Informações do Sistema*\n\n` +
+      `🕒 Uptime: ${uptime}\n` +
+      `🌐 Timezone: ${TIMEZONE}\n` +
+      `📡 Versão: 2.1\n` +
+      `🔄 Última Reinicialização: ${moment(this.stats.systemUptime).format('DD/MM/YYYY HH:mm:ss')}\n\n` +
+      `⚙️ *Configurações:*\n` +
+      `▫️ Início: ${this.customStartHour}:00\n` +
+      `▫️ Término: ${this.customEndHour}:00\n` +
+      `▫️ Motivacional: 05:00\n` +
+      `▫️ Bênção: 20:00`;
 
-        if (!session || session.step !== 'authenticated') {
-          await this.bot.answerCallbackQuery(query.id, { text: '⚠️ Acesso negado!' });
-          logWarning(`Tentativa de acesso não autorizado de ${chatId}`);
-          return;
-        }
-
-        switch (query.data) {
-          case 'start_ops':
-            this.isOperating = true;
-            await this.sendMessageWithRetry(chatId, '▶️ Operações iniciadas manualmente.');
-            logSuccess('Operações iniciadas manualmente');
-            this.scheduleNextOperation();
-            break;
-
-          case 'stop_ops':
-            this.isOperating = false;
-            if (this.operationTimeout) {
-              clearTimeout(this.operationTimeout);
-              this.operationTimeout = null;
-            }
-            await this.sendMessageWithRetry(chatId, '🛑 Operações pausadas manualmente.');
-            logWarning('Operações pausadas manualmente');
-            break;
-
-          case 'force_start':
-            this.forceOperating = true;
-            this.isOperating = true;
-            await this.sendMessageWithRetry(chatId, '⚡️ Modo força ativado - Operações iniciadas fora do horário.');
-            logWarning('Modo força ativado');
-            this.scheduleNextOperation();
-            break;
-
-          case 'force_stop':
-            this.forceOperating = false;
-            this.isOperating = false;
-            if (this.operationTimeout) {
-              clearTimeout(this.operationTimeout);
-              this.operationTimeout = null;
-            }
-            await this.sendMessageWithRetry(chatId, '🔒 Modo força desativado - Operações normalizadas.');
-            logSuccess('Modo força desativado');
-            break;
-
-          case 'send_announcement':
-            await this.sendMessageWithRetry(
-              chatId,
-              'Digite o texto do comunicado:',
-              { reply_markup: { force_reply: true } }
-            );
-            session.step = 'waiting_announcement';
-            break;
-
-          case 'config_buttons':
-            await this.sendButtonConfig(chatId);
-            break;
-
-          case 'pin_message':
-            await this.sendMessageWithRetry(
-              chatId,
-              'Digite a mensagem que deseja fixar:',
-              { reply_markup: { force_reply: true } }
-            );
-            session.step = 'waiting_pin_message';
-            break;
-
-          case 'view_stats':
-            await this.sendStats(chatId);
-            break;
-
-          case 'morning_motivation':
-            await this.sendMorningMotivation();
-            await this.sendMessageWithRetry(chatId, '✅ Mensagem motivacional enviada com sucesso!');
-            break;
-
-          case 'night_blessing':
-            await this.sendNightBlessing();
-            await this.sendMessageWithRetry(chatId, '✅ Bênção noturna enviada com sucesso!');
-            break;
-
-          case 'back_to_menu':
-            await this.sendAdminMenu(chatId);
-            break;
-        }
-
-        await this.bot.answerCallbackQuery(query.id);
-      } catch (error) {
-        logError(`Erro ao processar callback: ${error}`);
+    await this.sendMessageWithRetry(chatId, info, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
       }
     });
   }
 
-  setupSchedules() {
-    logSystem('Configurando agendamentos...');
-    
-    // Reset daily stats at midnight
-    schedule.scheduleJob('0 0 * * *', () => {
-      this.stats.dailyOperations = 0;
-      logInfo('Contador de operações diárias resetado');
-    });
+  async sendMaintenanceStats(chatId) {
+    const stats = 
+      `🔧 *Estatísticas de Manutenção*\n\n` +
+      `📊 Total de Manutenções: ${this.stats.maintenanceCount}\n` +
+      `🕒 Última Manutenção: ${this.stats.lastMaintenanceDate || 'Nenhuma'}\n\n` +
+      `📈 *Status Atual:*\n` +
+      `${this.maintenanceMode ? '🔧 Em Manutenção' : '✅ Sistema Operacional'}`;
 
-    // Morning motivation at 7 AM
-    schedule.scheduleJob('0 7 * * *', () => {
-      logInfo('Enviando mensagem motivacional matinal');
-      this.sendMorningMotivation();
+    await this.sendMessageWithRetry(chatId, stats, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
     });
-
-    // Start operations at configured start hour
-    schedule.scheduleJob(`0 ${this.customStartHour} * * *`, () => {
-      logInfo('Iniciando operações programadas');
-      this.startOperations();
-    });
-
-    // End operations at configured end hour
-    schedule.scheduleJob(`0 ${this.customEndHour} * * *`, () => {
-      logInfo('Encerrando operações programadas');
-      this.endOperations();
-    });
-
-    // Night blessing at 20:00
-    schedule.scheduleJob('0 20 * * *', () => {
-      logInfo('Enviando bênção noturna');
-      this.sendNightBlessing();
-    });
-
-    logSuccess('Agendamentos configurados com sucesso');
   }
 
   async sendOperation() {
-    if (!this.isOperating) return;
+    if (!this.isOperating || this.maintenanceMode) return;
 
     try {
       console.log(ASCII_OPERATION);
-      const multiplier = (Math.random() * (20.99 - 1.00) + 1.00).toFixed(2);
+      const multiplier = (Math.random() * (6.99 - 1.00) + 1.00).toFixed(2);
       const keyboard = {
         inline_keyboard: [
           [{ text: this.customButtons.button1.text, url: this.customButtons.button1.url }],
@@ -543,7 +467,7 @@ class OperationsBot {
   }
 
   scheduleNextOperation() {
-    if (!this.isOperating) return;
+    if (!this.isOperating || this.maintenanceMode) return;
 
     const now = moment();
     const hour = now.hour();
@@ -558,229 +482,188 @@ class OperationsBot {
     }
   }
 
-  async sendAnnouncement(chatId, session) {
-    try {
-      const keyboard = {
-        inline_keyboard: [
-          [{ text: session.button1Text, url: session.button1Url }],
-          [{ text: session.button2Text, url: session.button2Url }]
-        ]
-      };
+  setupSchedules() {
+    logSystem('Configurando agendamentos...');
+    
+    // Reset daily stats at midnight
+    schedule.scheduleJob('0 0 * * *', () => {
+      this.stats.dailyOperations = 0;
+      logInfo('Contador de operações diárias resetado');
+    });
 
-      const message = await this.sendMessageWithRetry(
-        this.channelId,
-        session.announcementText,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: keyboard
-        }
-      );
+    // Early morning motivation at 5 AM sharp
+    schedule.scheduleJob('0 5 * * *', () => {
+      logInfo('Enviando mensagem motivacional da madrugada');
+      this.sendEarlyMotivation();
+    });
 
-      await this.sendMessageWithRetry(
-        chatId,
-        '✅ Comunicado enviado com sucesso!\n\nDeseja fixar esta mensagem por 24 horas?',
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '✅ Sim', callback_data: `pin_${message.message_id}` },
-                { text: '❌ Não', callback_data: 'no_pin' }
-              ]
-            ]
-          }
-        }
-      );
-    } catch (error) {
-      logError(`Erro ao enviar comunicado: ${error}`);
-      await this.sendMessageWithRetry(chatId, '❌ Erro ao enviar comunicado. Tente novamente.');
-    }
-  }
+    // Pre-operation notification at 7 AM
+    schedule.scheduleJob('0 7 * * *', () => {
+      logInfo('Enviando aviso de início de operações');
+      this.sendPreOperationNotice();
+    });
 
-  async sendPinnedMessage(chatId, text) {
-    try {
-      // Unpin previous message if exists
-      if (this.pinnedMessageId) {
-        await this.bot.unpinChatMessage(this.channelId, this.pinnedMessageId);
+    // Start operations exactly at 8 AM
+    schedule.scheduleJob('0 8 * * *', () => {
+      if (!this.maintenanceMode) {
+        logInfo('Iniciando operações programadas');
+        this.startOperations();
       }
+    });
 
-      // Clear previous timer if exists
-      if (this.pinnedMessageTimer) {
-        clearTimeout(this.pinnedMessageTimer);
-      }
+    // End operations exactly at 7 PM
+    schedule.scheduleJob('0 19 * * *', () => {
+      logInfo('Encerrando operações programadas');
+      this.endOperations();
+      this.sendEndOperationNotice();
+    });
 
-      // Send and pin new message
-      const message = await this.sendMessageWithRetry(this.channelId, text, { parse_mode: 'Markdown' });
-      await this.bot.pinChatMessage(this.channelId, message.message_id);
-      
-      this.pinnedMessageId = message.message_id;
+    // Night blessing at 8 PM
+    schedule.scheduleJob('0 20 * * *', () => {
+      logInfo('Enviando bênção noturna');
+      this.sendNightBlessing();
+    });
 
-      // Schedule unpin after 24 hours
-      this.pinnedMessageTimer = setTimeout(async () => {
-        try {
-          await this.bot.unpinChatMessage(this.channelId, this.pinnedMessageId);
-          this.pinnedMessageId = null;
-        } catch (error) {
-          logError(`Erro ao desfixar mensagem: ${error}`);
-        }
-      }, 24 * 60 * 60 * 1000);
+    // System health check every hour
+    schedule.scheduleJob('0 * * * *', () => {
+      this.performHealthCheck();
+    });
 
-      await this.sendMessageWithRetry(chatId, '✅ Mensagem fixada com sucesso! Será desfixada automaticamente em 24 horas.');
-    } catch (error) {
-      logError(`Erro ao fixar mensagem: ${error}`);
-      await this.sendMessageWithRetry(chatId, '❌ Erro ao fixar mensagem. Tente novamente.');
-    }
+    logSuccess('Agendamentos configurados com sucesso');
   }
 
-  async sendStats(chatId) {
-    const uptime = moment.duration(Date.now() - this.startTime).humanize();
-    const stats = `📊 *Estatísticas do Bot*\n\n` +
-      `🕒 Tempo online: ${uptime}\n` +
-      `📨 Mensagens enviadas: ${this.stats.messagesSent}\n` +
-      `🎯 Total de operações: ${this.stats.totalOperations}\n` +
-      `📈 Operações hoje: ${this.stats.dailyOperations}\n` +
-      `⏰ Horário de funcionamento: ${this.customStartHour}:00 - ${this.customEndHour}:00\n` +
-      `✅ Status: ${this.isOperating ? 'Em operação' : 'Pausado'}\n` +
-      `⚡️ Modo Força: ${this.forceOperating ? 'Ativado' : 'Desativado'}`;
-
-    await this.sendMessageWithRetry(chatId, stats, { parse_mode: 'Markdown' });
-  }
-
-  async sendHelp(chatId) {
-    const help = `🤖 *Comandos Disponíveis*\n\n` +
-      `📌 *Comandos Básicos*\n` +
-      `/start - Iniciar o bot\n` +
-      `/menu - Mostrar menu principal\n` +
-      `/stats - Ver estatísticas\n` +
-      `/report - Relatório diário\n` +
-      `/morning - Enviar mensagem motivacional\n` +
-      `/night - Enviar bênção noturna\n` +
-      `/help - Mostrar esta ajuda\n\n` +
-      `⚙️ *Funções do Menu*\n` +
-      `• Iniciar/Parar operações\n` +
-      `• Forçar início/parada\n` +
-      `• Enviar comunicados\n` +
-      `• Configurar botões\n` +
-      `• Fixar mensagens\n` +
-      `• Ver estatísticas\n` +
-      `• Mensagens motivacionais\n` +
-      `• Bênçãos noturnas`;
-
-    await this.sendMessageWithRetry(chatId, help, { parse_mode: 'Markdown' });
-  }
-
-  async sendButtonConfig(chatId) {
-    const config = `⚙️ *Configuração Atual dos Botões*\n\n` +
-      `*Botão 1:*\n` +
-      `Texto: ${this.customButtons.button1.text}\n` +
-      `Link: ${this.customButtons.button1.url}\n\n` +
-      `*Botão 2:*\n` +
-      `Texto: ${this.customButtons.button2.text}\n` +
-      `Link: ${this.customButtons.button2.url}`;
+  async sendPreOperationNotice() {
+    const message = 
+      "🚨 *ATENÇÃO - OPERAÇÕES INICIAM EM 1 HORA*\n\n" +
+      "📈 Prepare-se para mais um dia de operações!\n\n" +
+      "⚠️ *AVISOS IMPORTANTES:*\n" +
+      "• Faça seu depósito agora para operar desde o início\n" +
+      "• Novatos: Criem suas contas pelo botão abaixo\n" +
+      "• Opere na mesma casa que o mentor\n" +
+      "• Mesmo gráfico = Maiores chances de sucesso\n\n" +
+      "🎯 *HORÁRIO DAS OPERAÇÕES:*\n" +
+      "• Segunda a Sexta: 8h às 19h\n\n" +
+      "👨‍🏫 *MENTORIA AO VIVO:*\n" +
+      "• Toda Sexta-feira\n" +
+      "• Das 20h às 21h\n\n" +
+      "✅ Clique no botão abaixo para criar sua conta:";
 
     const keyboard = {
       inline_keyboard: [
-        [{ text: '✏️ Editar Botão 1', callback_data: 'edit_button1' }],
-        [{ text: '✏️ Editar Botão 2', callback_data: 'edit_button2' }],
-        [{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]
+        [{ text: '📝 CRIAR CONTA AGORA', url: AFFILIATE_URL }],
+        [{ text: '💰 FAZER DEPÓSITO', url: AFFILIATE_URL }]
       ]
     };
 
-    await this.sendMessageWithRetry(chatId, config, {
+    await this.sendMessageWithRetry(this.channelId, message, {
       parse_mode: 'Markdown',
       reply_markup: keyboard
     });
   }
 
-  async sendMorningMotivation() {
-    const motivationalMessages = [
-      "🌅 *BOM DIA, FAMÍLIA!*\n\n" +
-      "🙏 Que hoje seja um dia de vitórias e conquistas!\n" +
-      "💪 Mantenha o foco e a disciplina\n" +
-      "✨ Sua dedicação será recompensada!",
+  async sendEndOperationNotice() {
+    const message = 
+      "🔔 *ENCERRAMENTO DAS OPERAÇÕES*\n\n" +
+      "✅ Operações encerradas por hoje!\n\n" +
+      "📅 *PRÓXIMAS ATIVIDADES:*\n" +
+      "• Operações: Amanhã das 8h às 19h\n" +
+      `${moment().day() === 5 ? "• Mentoria HOJE às 20h!\n" : "• Mentoria: Sexta-feira às 20h\n"}\n` +
+      "⚡️ *PREPARAÇÃO PARA AMANHÃ:*\n" +
+      "• Faça seu depósito\n" +
+      "• Verifique seu saldo\n" +
+      "• Prepare suas estratégias\n\n" +
+      "🎯 Crie sua conta na casa indicada abaixo:";
 
-      "🌞 *COMEÇANDO MAIS UM DIA DE SUCESSO!*\n\n" +
-      "🎯 Defina suas metas\n" +
-      "📈 Siga sua estratégia\n" +
-      "💫 Acredite no seu potencial",
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: '📝 CRIAR CONTA AGORA', url: AFFILIATE_URL }],
+        [{ text: '💰 FAZER DEPÓSITO', url: AFFILIATE_URL }]
+      ]
+    };
 
-      "🌄 *NOVO DIA, NOVAS OPORTUNIDADES!*\n\n" +
-      "⭐️ Sua persistência é sua força\n" +
-      "🚀 Vamos em busca dos objetivos\n" +
-      "✨ O sucesso é construído dia após dia"
-    ];
-
-    const randomMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)];
-    await this.sendMessageWithRetry(this.channelId, randomMessage, { parse_mode: 'Markdown' });
-  }
-
-  async sendNightBlessing() {
-    const blessings = [
-      "🌙 *BOA NOITE, FAMÍLIA!*\n\n" +
-      "✨ \"O Senhor te abençoe e te guarde.\" - Números 6:24\n\n" +
-      "🙏 Que sua noite seja abençoada e seu descanso renovador.",
-
-      "🌠 *MOMENTO DE GRATIDÃO*\n\n" +
-      "✝️ \"Em paz me deito e logo pego no sono, porque só tu, Senhor, me fazes viver em segurança.\" - Salmos 4:8\n\n" +
-      "🙏 Descanse em paz e renove suas energias.",
-
-      "🌜 *BÊNÇÃO NOTURNA*\n\n" +
-      "🙏 \"O Senhor é o meu pastor; nada me faltará.\" - Salmos 23:1\n\n" +
-      "✨ Que Deus proteja seu sono e abençoe seu despertar."
-    ];
-
-    const randomBlessing = blessings[Math.floor(Math.random() * blessings.length)]; await this.sendMessageWithRetry(this.channelId, randomBlessing, { parse_mode: 'Markdown' });
-  }
-
-  async sendDailyReport(chatId) {
-    const report = 
-      `📈 *RELATÓRIO DIÁRIO*\n\n` +
-      `📊 *Estatísticas de Hoje:*\n` +
-      `▫️ Operações realizadas: ${this.stats.dailyOperations}\n` +
-      `▫️ Mensagens enviadas: ${this.stats.messagesSent}\n\n` +
-      `⏰ *Horário de Funcionamento:*\n` +
-      `▫️ Início: ${this.customStartHour}:00\n` +
-      `▫️ Fim: ${this.customEndHour}:00\n\n` +
-      `✅ Status: ${this.isOperating ? 'Em operação' : 'Pausado'}\n` +
-      `⚡️ Modo Força: ${this.forceOperating ? 'Ativado' : 'Desativado'}`;
-
-    await this.sendMessageWithRetry(chatId, report, {
+    await this.sendMessageWithRetry(this.channelId, message, {
       parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
-      }
+      reply_markup: keyboard
     });
   }
 
-  startOperations() {
-    this.isOperating = true;
-    this.scheduleNextOperation();
-    logSuccess('Operações iniciadas automaticamente');
+  async performHealthCheck() {
+    const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
+    const currentHour = moment().hour();
+    const shouldBeOperating = currentHour >= START_HOUR && currentHour < END_HOUR;
+
+    if (shouldBeOperating && !this.isOperating && !this.maintenanceMode) {
+      logWarning('Sistema detectou inconsistência no estado de operação');
+      this.startOperations();
+    }
+
+    if (!shouldBeOperating && this.isOperating && !this.forceOperating) {
+      logWarning('Sistema detectou operações fora do horário');
+      this.endOperations();
+    }
+
+    logInfo(`Verificação de saúde do sistema - Uptime: ${uptime}`);
   }
 
-  endOperations() {
-    this.isOperating = false;
-    if (this.operationTimeout) {
-      clearTimeout(this.operationTimeout);
-      this.operationTimeout = null;
-    }
-    logSuccess('Operações encerradas automaticamente');
-  }
-}
+  async sendEarlyMotivation() {
+    const messages = [
+      "🌅 *MOTIVAÇÃO DA MADRUGADA*\n\n" +
+      "\"Acordai, vós que dormis, e levantai-vos dentre os mortos, e Cristo vos esclarecerá.\" - Efésios 5:14\n\n" +
+      "💫 Um novo dia de oportunidades se inicia!\n" +
+      "🙏 Que Deus abençoe nossos objetivos\n" +
+      "✨ Prepare-se para mais um dia vitorioso!",
 
-try {
-  logSystem('Iniciando sistema Quantum...');
-  const bot = new OperationsBot(TOKEN, CHANNEL_ID);
-  logSuccess('Sistema Quantum online e operacional!');
+      "🌄 *DESPERTAR VITORIOSO*\n\n" +
+      "\"O Senhor é a minha força e o meu escudo.\" - Salmos 28:7\n\n" +
+      "🌟 A madrugada traz novas possibilidades\n" +
+      "💪 Sua dedicação será recompensada\n" +
+      "✨ Vamos juntos em busca das conquistas!",
 
-  process.on('SIGINT', () => {
-    logWarning('Encerrando sistema Quantum...');
-    if (bot.operationTimeout) {
-      clearTimeout(bot.operationTimeout);
-    }
-    bot.isOperating = false;
-    process.exit(0);
-  });
-} catch (error) {
-  logError(`Falha crítica ao iniciar: ${error}`);
-  process.exit(1);
-}
+      "🌅 *BENÇÃO MATINAL*\n\n" +
+      "\"As misericórdias do Senhor se renovam a cada manhã.\" - Lamentações 3:23\n\n" +
+      "🙏 Que este dia seja repleto de vitórias\n" +
+      "💫 Sua persistência é sua maior força\n" +
+      "✨ Deus está no controle de tudo!",
+
+      "🌅 *AMANHECER ABENÇOADO*\n\n" +
+      "\"Tudo posso naquele que me fortalece.\" - Filipenses 4:13\n\n" +
+      "🙏 Deus está contigo nesta madrugada\n" +
+      "💫 Seu potencial é ilimitado\n" +
+      "✨ Hoje será um dia de vitórias!",
+
+      "🌄 *DESPERTAR COM DEUS*\n\n" +
+      "\"Entrega o teu caminho ao Senhor; confia nele, e ele tudo fará.\" - Salmos 37:5\n\n" +
+      "🌟 Sua dedicação será recompensada\n" +
+      "💪 Mantenha sua fé inabalável\n" +
+      "✨ Grandes conquistas te aguardam!",
+
+      "🌅 *MANHÃ DE VITÓRIAS*\n\n" +
+      "\"Porque sou eu que conheço os planos que tenho para vocês, diz o Senhor.\" - Jeremias 29:11\n\n" +
+      "🙏 Deus tem um propósito especial para você\n" +
+      "💫 Sua persistência é admirável\n" +
+      "✨ Continue firme em seus objetivos!",
+
+      "🌄 *AURORA DE BÊNÇÃOS*\n\n" +
+      "\"O Senhor é minha luz e minha salvação; de quem terei temor?\" - Salmos 27:1\n\n" +
+      "🌟 Comece o dia com determinação\n" +
+      "💪 Sua força vem do Senhor\n" +
+      "✨ Vitórias te aguardam!",
+
+      "🌅 *DESPERTAR COM FÉ*\n\n" +
+      "\"Sejam fortes e corajosos. Não tenham medo nem fiquem apavorados.\" - Deuteronômio 31:6\n\n" +
+      "🙏 Deus está no controle\n" +
+      "💫 Sua dedicação será recompensada\n" +
+      "✨ Hoje é dia de conquistas!",
+
+      "🌄 *AMANHECER DE PROPÓSITOS*\n\n" +
+      "\"Antes que te formasse no ventre te conheci.\" - Jeremias 1:5\n\n" +
+      "🌟 Você tem um propósito especial\n" +
+      "💪 Deus planejou cada detalhe\n" +
+      "✨ Siga em frente com fé!",
+
+      "🌅 *MANHÃ DE ESPERANÇA*\n\n" +
+      "\"Porque para Deus nada é impossível.\" - Lucas 1:37\n\n" +
+      "🙏 Confie no tempo de Deus\n" +
+      "💫 Seus sonhos são possíveis\n" +
+      "✨ Mantenha sua fé viva!"
+    ];
