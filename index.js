@@ -662,7 +662,6 @@ class OperationsBot {
       "✨ Siga em frente com fé!",
 
       "🌅 *MANHÃ DE ESPERANÇA*\n\n" +
-      "\"Porque para "\"Porque para Deus nada é impossível.\" - Lucas 1:37\n\n" +
       "🙏 Confie no tempo de Deus\n" +
       "💫 Seus sonhos são possíveis\n" +
       "✨ Mantenha sua fé viva!"
