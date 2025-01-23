@@ -111,6 +111,9 @@ class OperationsBot {
     this.setupSchedules();
     this.setupCallbackQueries();
 
+    // Adicionar novo comando
+    this.bot.onText(/\/tempo/, (msg) => this.handleTempoCommand(msg));
+
     // Iniciar operações automaticamente se estiver dentro do horário
     const currentHour = moment().hour();
     if (currentHour >= START_HOUR && currentHour < END_HOUR) {
@@ -188,6 +191,41 @@ class OperationsBot {
     }
   }
 
+  async handleTempoCommand(msg) {
+    const chatId = msg.chat.id;
+    const now = moment();
+    
+    // Calcular tempos restantes
+    const nextOperation = moment().hour(START_HOUR).minute(0).second(0);
+    if (now.isAfter(nextOperation)) {
+      nextOperation.add(1, 'day');
+    }
+
+    const nextMotivation = moment().hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
+    if (now.isAfter(nextMotivation)) {
+      nextMotivation.add(1, 'day');
+    }
+
+    const operationsEnd = moment().hour(END_HOUR).minute(0).second(0);
+    if (now.isAfter(operationsEnd)) {
+      operationsEnd.add(1, 'day');
+    }
+
+    const nightBlessing = moment().hour(20).minute(0).second(0);
+    if (now.isAfter(nightBlessing)) {
+      nightBlessing.add(1, 'day');
+    }
+
+    const message = 
+      "⏰ *TEMPOS RESTANTES*\n\n" +
+      `🌅 Motivação: ${moment.duration(nextMotivation.diff(now)).format("HH:mm:ss")}\n` +
+      `🎯 Operações: ${moment.duration(nextOperation.diff(now)).format("HH:mm:ss")}\n` +
+      `🔚 Fim Operações: ${moment.duration(operationsEnd.diff(now)).format("HH:mm:ss")}\n` +
+      `🌙 Bênção Noturna: ${moment.duration(nightBlessing.diff(now)).format("HH:mm:ss")}`;
+
+    await this.sendMessageWithRetry(chatId, message, { parse_mode: 'Markdown' });
+  }
+
   async handleMessage(msg) {
     if (!msg.chat || msg.chat.type !== 'private') return;
     
@@ -233,12 +271,23 @@ class OperationsBot {
           break;
 
         case 'waiting_announcement':
-          session.announcementText = text;
-          await this.sendMessageWithRetry(
-            chatId,
-            'Digite o texto para o primeiro botão:',
-            { reply_markup: { force_reply: true } }
-          );
+          if (msg.photo || msg.video || msg.document) {
+            session.mediaType = msg.photo ? 'photo' : msg.video ? 'video' : 'document';
+            session.mediaId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : 
+                           msg.video ? msg.video.file_id : 
+                           msg.document.file_id;
+            await this.sendMessageWithRetry(chatId, 'Agora digite o texto do comunicado:', { reply_markup: { force_reply: true } });
+            session.step = 'waiting_announcement_text';
+          } else {
+            session.announcementText = msg.text;
+            await this.sendMessageWithRetry(chatId, 'Digite o texto para o primeiro botão:', { reply_markup: { force_reply: true } });
+            session.step = 'waiting_button1_text';
+          }
+          break;
+
+        case 'waiting_announcement_text':
+          session.announcementText = msg.text;
+          await this.sendMessageWithRetry(chatId, 'Digite o texto para o primeiro botão:', { reply_markup: { force_reply: true } });
           session.step = 'waiting_button1_text';
           break;
 
@@ -625,7 +674,7 @@ class OperationsBot {
       "💫 Sua persistência é sua maior força\n" +
       "✨ Deus está no controle de tudo!",
 
-      "🌅 *AMANHECER ABENÇOADO*\n\n" +
+      "🌅 *AMAN HECER ABENÇOADO*\n\n" +
       "\"Tudo posso naquele que me fortalece.\" - Filipenses 4:13\n\n" +
       "🙏 Deus está contigo nesta madrugada\n" +
       "💫 Seu potencial é ilimitado\n" +
@@ -749,7 +798,7 @@ class OperationsBot {
 
           case 'send_announcement':
             session.step = 'waiting_announcement';
-            await this.sendMessageWithRetry(chatId, 'Digite o texto do comunicado:', { reply_markup: { force_reply: true } });
+            await this.sendMessageWithRetry(chatId, 'Digite o texto do comunicado ou envie uma mídia (foto/vídeo/documento):', { reply_markup: { force_reply: true } });
             break;
 
           case 'config_buttons':
@@ -802,6 +851,109 @@ class OperationsBot {
   isInOperatingHours() {
     const currentHour = moment().hour();
     return currentHour >= this.customStartHour && currentHour < this.customEndHour;
+  }
+
+  async sendAnnouncement(chatId, session) {
+    try {
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: session.button1Text, url: session.button1Url }],
+          [{ text: session.button2Text, url: session.button2Url }]
+        ]
+      };
+
+      if (session.mediaId) {
+        switch (session.mediaType) {
+          case 'photo':
+            await this.bot.sendPhoto(this.channelId, session.mediaId, {
+              caption: session.announcementText,
+              parse_mode: 'Markdown',
+              reply_markup: keyboard
+            });
+            break;
+          case 'video':
+            await this.bot.sendVideo(this.channelId, session.mediaId, {
+              caption: session.announcementText,
+              parse_mode: 'Markdown',
+              reply_markup: keyboard
+            });
+            break;
+          case 'document':
+            await this.bot.sendDocument(this.channelId, session.mediaId, {
+              caption: session.announcementText,
+              parse_mode: 'Markdown',
+              reply_markup: keyboard
+            });
+            break;
+        }
+      } else {
+        await this.sendMessageWithRetry(this.channelId, session.announcementText, {
+          parse_mode: 'Markdown',
+          reply_markup: keyboard
+        });
+      }
+
+      await this.sendMessageWithRetry(chatId, '✅ Comunicado enviado com sucesso!');
+      await this.sendAdminMenu(chatId);
+    } catch (error) {
+      logError(`Erro ao enviar comunicado: ${error}`);
+      await this.sendMessageWithRetry(chatId, '❌ Erro ao enviar comunicado. Tente novamente.');
+      await this.sendAdminMenu(chatId);
+    }
+  }
+
+  async sendStats(chatId) {
+    const uptime = moment.duration(Date.now() - this.startTime).humanize();
+    const stats = 
+      `📊 *Estatísticas do Sistema*\n\n` +
+      `🔢 Total de Operações: ${this.stats.totalOperations}\n` +
+      `📈 Operações Hoje: ${this.stats.dailyOperations}\n` +
+      `📨 Mensagens Enviadas: ${this.stats.messagesSent}\n` +
+      `⏱️ Uptime: ${uptime}\n\n` +
+      `🕒 Última Atualização: ${moment().format('DD/MM/YYYY HH:mm:ss')}`;
+
+    await this.sendMessageWithRetry(chatId, stats, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
+    });
+  }
+
+  async sendHelp(chatId) {
+    const help = 
+      `ℹ️ *Comandos Disponíveis*\n\n` +
+      `🔹 /menu - Mostra o menu principal\n` +
+      `🔹 /stats - Mostra estatísticas do sistema\n` +
+      `🔹 /report - Gera relatório diário\n` +
+      `🔹 /morning - Envia mensagem motivacional\n` +
+      `🔹 /night - Envia bênção noturna\n` +
+      `🔹 /tempo - Mostra tempos restantes\n` +
+      `🔹 /help - Mostra esta mensagem`;
+
+    await this.sendMessageWithRetry(chatId, help, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
+    });
+  }
+
+  async sendDailyReport(chatId) {
+    const report = 
+      `📋 *Relatório Diário*\n\n` +
+      `📊 Operações Realizadas: ${this.stats.dailyOperations}\n` +
+      `📈 Taxa de Sucesso: ${((this.stats.dailyOperations / this.stats.totalOperations) * 100).toFixed(2)}%\n` +
+      `⏱️ Tempo em Operação: ${moment.duration(Date.now() - this.startTime).humanize()}\n\n` +
+      `📅 Data: ${moment().format('DD/MM/YYYY')}\n` +
+      `🕒 Hora: ${moment().format('HH:mm:ss')}`;
+
+    await this.sendMessageWithRetry(chatId, report, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
+    });
   }
 }
 
