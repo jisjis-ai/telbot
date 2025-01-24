@@ -9,7 +9,7 @@ const CHANNEL_ID = -1002003497082;
 
 // Ajuste de horários (2 horas atrás para compensar fuso)
 const START_HOUR = 8; // 6h no servidor = 8h em Moçambique
-const END_HOUR = 17; // 17h no servidor = 19h em Moçambique
+const END_HOUR = 19; // 17h no servidor = 19h em Moçambique
 const EARLY_MOTIVATION_HOUR = 3; // 3h no servidor = 5h em Moçambique
 const NIGHT_BLESSING_HOUR = 18; // 18h no servidor = 20h em Moçambique
 const PRE_OPERATION_HOUR = 5; // 5h no servidor = 7h em Moçambique
