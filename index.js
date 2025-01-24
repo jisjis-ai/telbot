@@ -1,4 +1,3 @@
-// Ajustando o código para considerar a diferença de fuso horário
 const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -7,12 +6,12 @@ const moment = require('moment-timezone');
 const TOKEN = '5847731188:AAF2vTmLyBHvdBYY4LSgJYQFqdbBL5IrSMY';
 const CHANNEL_ID = -1002003497082;
 
-// Ajuste de horários (2 horas atrás para compensar fuso)
-const START_HOUR = 6; // 6h no servidor = 8h em Moçambique
-const END_HOUR = 17; // 17h no servidor = 19h em Moçambique
-const EARLY_MOTIVATION_HOUR = 3; // 3h no servidor = 5h em Moçambique
-const NIGHT_BLESSING_HOUR = 18; // 18h no servidor = 20h em Moçambique
-const PRE_OPERATION_HOUR = 5; // 5h no servidor = 7h em Moçambique
+// Horários (usando hora do servidor)
+const START_HOUR = 8;
+const END_HOUR = 19;
+const EARLY_MOTIVATION_HOUR = 5;
+const NIGHT_BLESSING_HOUR = 20;
+const PRE_OPERATION_HOUR = 7;
 
 // Resto das configurações
 const ADMIN_USERNAME = '007';
@@ -136,13 +135,64 @@ class OperationsBot {
     // Adicionar novo comando
     this.bot.onText(/\/tempo/, (msg) => this.handleTempoCommand(msg));
 
+    // Iniciar operações automaticamente se estiver dentro do horário
+    const currentHour = moment().hour();
+    if (currentHour >= START_HOUR && currentHour < END_HOUR) {
+      this.startOperations();
+    }
+
     logSuccess('Sistema Quantum totalmente operacional!');
   }
 
-  // Método isAdmin que faltava
-  async isAdmin(chatId) {
-    const session = this.adminSessions.get(chatId);
-    return session && session.step === 'authenticated';
+  async handleTempoCommand(msg) {
+    try {
+      const chatId = msg.chat.id;
+      const now = moment();
+      
+      // Calcular tempos restantes
+      const nextOperation = moment().hour(START_HOUR).minute(0).second(0);
+      if (now.isAfter(nextOperation)) {
+        nextOperation.add(1, 'day');
+      }
+
+      const nextMotivation = moment().hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
+      if (now.isAfter(nextMotivation)) {
+        nextMotivation.add(1, 'day');
+      }
+
+      const operationsEnd = moment().hour(END_HOUR).minute(0).second(0);
+      if (now.isAfter(operationsEnd)) {
+        operationsEnd.add(1, 'day');
+      }
+
+      const nightBlessing = moment().hour(NIGHT_BLESSING_HOUR).minute(0).second(0);
+      if (now.isAfter(nightBlessing)) {
+        nightBlessing.add(1, 'day');
+      }
+
+      const message = `
+${messageStyles.title('⏰ TEMPOS RESTANTES')}
+
+${messageStyles.subtitle('🌅 Próxima Motivação:')}
+${messageStyles.time(moment.duration(nextMotivation.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.subtitle('🎯 Próximas Operações:')}
+${messageStyles.time(moment.duration(nextOperation.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.subtitle('🔚 Fim das Operações:')}
+${messageStyles.time(moment.duration(operationsEnd.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.subtitle('🌙 Bênção Noturna:')}
+${messageStyles.time(moment.duration(nightBlessing.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.info('Horário atual em Moçambique:')}
+${messageStyles.time(now.format('HH:mm:ss'))}`;
+
+      await this.sendMessageWithRetry(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+      logError(`Erro ao processar comando /tempo: ${error}`);
+      await this.sendMessageWithRetry(msg.chat.id, messageStyles.error('Erro ao processar comando. Tente novamente.'), { parse_mode: 'HTML' });
+    }
   }
 
   reconnect() {
@@ -260,69 +310,6 @@ class OperationsBot {
         if (i === maxRetries - 1) throw error;
         await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
       }
-    }
-  }
-
-  async handleTempoCommand(msg) {
-    try {
-      const chatId = msg.chat.id;
-      
-      // Verifica se é admin
-      if (!await this.isAdmin(chatId)) {
-        await this.sendMessageWithRetry(chatId, messageStyles.error('Você precisa fazer login primeiro!'), { parse_mode: 'HTML' });
-        return;
-      }
-
-      const now = moment().tz(TIMEZONE);
-      
-      // Calcular tempos restantes
-      const nextOperation = moment().tz(TIMEZONE).hour(START_HOUR).minute(0).second(0);
-      if (now.isAfter(nextOperation)) {
-        nextOperation.add(1, 'day');
-      }
-
-      const nextMotivation = moment().tz(TIMEZONE).hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
-      if (now.isAfter(nextMotivation)) {
-        nextMotivation.add(1, 'day');
-      }
-
-      const operationsEnd = moment().tz(TIMEZONE).hour(END_HOUR).minute(0).second(0);
-      if (now.isAfter(operationsEnd)) {
-        operationsEnd.add(1, 'day');
-      }
-
-      const nightBlessing = moment().tz(TIMEZONE).hour(NIGHT_BLESSING_HOUR).minute(0).second(0);
-      if (now.isAfter(nightBlessing)) {
-        nightBlessing.add(1, 'day');
-      }
-
-      const message = `
-${messageStyles.title('⏰ TEMPOS RESTANTES')}
-
-${messageStyles.subtitle('🌅 Próxima Motivação:')}
-${messageStyles.time(moment.duration(nextMotivation.diff(now)).humanize())}
-
-${messageStyles.subtitle('🎯 Próximas Operações:')}
-${messageStyles.time(moment.duration(nextOperation.diff(now)).humanize())}
-
-${messageStyles.subtitle('🔚 Fim das Operações:')}
-${messageStyles.time(moment.duration(operationsEnd.diff(now)).humanize())}
-
-${messageStyles.subtitle('🌙 Bênção Noturna:')}
-${messageStyles.time(moment.duration(nightBlessing.diff(now)).humanize())}
-
-${messageStyles.info('Horário atual em Moçambique:')}
-${messageStyles.time(now.format('HH:mm:ss'))}`;
-
-      await this.sendMessageWithRetry(chatId, message, { 
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [[{ text: '🔄 Atualizar', callback_data: 'view_times' }]]
-        }
-      });
-    } catch (error) {
-      logError(`Erro ao processar comando /tempo: ${error}`);
-      await this.sendMessageWithRetry(msg.chat.id, messageStyles.error('Erro ao processar comando. Tente novamente.'), { parse_mode: 'HTML' });
     }
   }
 
@@ -625,7 +612,7 @@ ${messageStyles.info('📊 Próxima operação em breve!')}`;
   scheduleNextOperation() {
     if (!this.isOperating || this.maintenanceMode) return;
 
-    const now = moment().tz(TIMEZONE);
+    const now = moment();
     const hour = now.hour();
 
     if ((hour >= START_HOUR && hour < END_HOUR) || this.forceOperating) {
@@ -685,8 +672,6 @@ ${messageStyles.info('📊 Próxima operação em breve!')}`;
       this.performHealthCheck();
     });
 
-    logSuccess(' Here's the continuation of the code exactly where it left off:
-
     logSuccess('Agendamentos configurados com sucesso');
   }
 
@@ -711,6 +696,8 @@ ${messageStyles.info('📊 Próxima operação em breve!')}`;
   async sendEarlyMotivation() {
     const message = `
 ${messageStyles.title('🌅 MOTIVAÇÃO DA MADRUGADA')}
+
+${messageStyles.quote(' Here's the continuation of the code:
 
 ${messageStyles.quote('Acordai, vós que dormis, e levantai-vos dentre os mortos, e Cristo vos esclarecerá.')}
 ${messageStyles.subtitle('Efésios 5:14')}
@@ -1065,6 +1052,11 @@ ${messageStyles.time(`Hora: ${moment().format('HH:mm:ss')}`)}`;
   isInOperatingHours() {
     const currentHour = moment().hour();
     return currentHour >= START_HOUR && currentHour < END_HOUR;
+  }
+
+  async isAdmin(chatId) {
+    const session = this.adminSessions.get(chatId);
+    return session && session.step === 'authenticated';
   }
 }
 
