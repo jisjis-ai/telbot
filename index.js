@@ -1,3 +1,4 @@
+// Ajustando o código para considerar a diferença de fuso horário
 const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -7,7 +8,7 @@ const TOKEN = '5847731188:AAF2vTmLyBHvdBYY4LSgJYQFqdbBL5IrSMY';
 const CHANNEL_ID = -1002003497082;
 
 // Ajuste de horários (2 horas atrás para compensar fuso)
-const START_HOUR = 6; // 6h no servidor = 8h em Moçambique
+const START_HOUR = 8; // 6h no servidor = 8h em Moçambique
 const END_HOUR = 17; // 17h no servidor = 19h em Moçambique
 const EARLY_MOTIVATION_HOUR = 3; // 3h no servidor = 5h em Moçambique
 const NIGHT_BLESSING_HOUR = 18; // 18h no servidor = 20h em Moçambique
@@ -137,7 +138,7 @@ class OperationsBot {
 
     // Iniciar operações automaticamente se estiver dentro do horário
     const currentHour = moment().hour();
-    if (currentHour >= START_HOUR && currentHour < END_HOUR && !this.isOperating) {
+    if (currentHour >= START_HOUR && currentHour < END_HOUR) {
       this.startOperations();
     }
 
@@ -260,6 +261,52 @@ class OperationsBot {
         await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
       }
     }
+  }
+
+  async handleTempoCommand(msg) {
+    const chatId = msg.chat.id;
+    const now = moment();
+    
+    // Calcular tempos restantes
+    const nextOperation = moment().hour(START_HOUR).minute(0).second(0);
+    if (now.isAfter(nextOperation)) {
+      nextOperation.add(1, 'day');
+    }
+
+    const nextMotivation = moment().hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
+    if (now.isAfter(nextMotivation)) {
+      nextMotivation.add(1, 'day');
+    }
+
+    const operationsEnd = moment().hour(END_HOUR).minute(0).second(0);
+    if (now.isAfter(operationsEnd)) {
+      operationsEnd.add(1, 'day');
+    }
+
+    const nightBlessing = moment().hour(NIGHT_BLESSING_HOUR).minute(0).second(0);
+    if (now.isAfter(nightBlessing)) {
+      nightBlessing.add(1, 'day');
+    }
+
+    const message = `
+${messageStyles.title('⏰ TEMPOS RESTANTES')}
+
+${messageStyles.subtitle('🌅 Próxima Motivação:')}
+${messageStyles.time(moment.duration(nextMotivation.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.subtitle('🎯 Próximas Operações:')}
+${messageStyles.time(moment.duration(nextOperation.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.subtitle('🔚 Fim das Operações:')}
+${messageStyles.time(moment.duration(operationsEnd.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.subtitle('🌙 Bênção Noturna:')}
+${messageStyles.time(moment.duration(nightBlessing.diff(now)).format('HH:mm:ss'))}
+
+${messageStyles.info('Horário atual em Moçambique:')}
+${messageStyles.time(now.format('HH:mm:ss'))}`;
+
+    await this.sendMessageWithRetry(chatId, message, { parse_mode: 'HTML' });
   }
 
   async handleMessage(msg) {
@@ -561,7 +608,7 @@ ${messageStyles.info('📊 Próxima operação em breve!')}`;
   scheduleNextOperation() {
     if (!this.isOperating || this.maintenanceMode) return;
 
-    const now = moment();
+    const now = moment().tz(TIMEZONE);
     const hour = now.hour();
 
     if ((hour >= START_HOUR && hour < END_HOUR) || this.forceOperating) {
@@ -595,13 +642,11 @@ ${messageStyles.info('📊 Próxima operação em breve!')}`;
       this.sendPreOperationNotice();
     });
 
-    // Start operations - Modificado para usar uma única regra
+    // Start operations
     schedule.scheduleJob(`0 ${START_HOUR} * * *`, () => {
-      if (!this.maintenanceMode && !this.isOperating) {
+      if (!this.maintenanceMode) {
         logInfo('Iniciando operações programadas');
         this.startOperations();
-      } else {
-        logInfo('Operações já em andamento ou sistema em manutenção');
       }
     });
 
@@ -629,10 +674,9 @@ ${messageStyles.info('📊 Próxima operação em breve!')}`;
   async performHealthCheck() {
     const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
     const currentHour = moment().hour();
-    const shouldBeOperating = currentHour >= START_HOUR && currentHour < END_HOUR;
+    const shouldBeOperating = currentHour >= START_HOUR && currentHour < END_HOUR ;
 
-    // Modificado para evitar inicializações duplicadas
-    if (shouldBeOperating && !this.isOperating && !this.maintenanceMode && !this.forceOperating) {
+    if (shouldBeOperating && !this.isOperating && !this.maintenanceMode) {
       logWarning('Sistema detectou inconsistência no estado de operação');
       this.startOperations();
     }
@@ -683,7 +727,7 @@ ${messageStyles.success('✅ Clique no botão abaixo para criar sua conta:')}`;
     const keyboard = {
       inline_keyboard: [
         [{ text: '📝 CRIAR CONTA AGORA', url: AFFILIATE_URL }],
-        [{ text: '💰 FAZER DEPÓSITO', url: AFFILIATE _URL }]
+        [{ text: '💰 FAZER DEPÓSITO', url: AFFILIATE_URL }]
       ]
     };
 
@@ -766,54 +810,136 @@ ${messageStyles.info('💫 Amanhã será um novo dia de vitórias!')}`;
     await this.sendMessageWithRetry(this.channelId, message, { parse_mode: 'HTML' });
   }
 
-  async handleTempoCommand(msg) {
+  async sendStats(chatId) {
+    const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
+    const message = `
+${messageStyles.title('📊 Estatísticas do Sistema')}
+
+${messageStyles.stats(`🔢 Total de Operações: ${this.stats.totalOperations}`)}
+${messageStyles.stats(`📈 Operações Hoje: ${this.stats.dailyOperations}`)}
+${messageStyles.stats(`📨 Mensagens Enviadas: ${this.stats.messagesSent}`)}
+${messageStyles.stats(`⏱️ Uptime: ${uptime}`)}
+
+${messageStyles.time(`Última Atualização: ${moment().format('DD/MM/YYYY HH:mm:ss')}`)}`;
+
+    await this.sendMessageWithRetry(chatId, message, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
+    });
+  }
+
+  async sendHelp(chatId) {
+    const help = `
+${messageStyles.title('ℹ️ Comandos Disponíveis')}
+
+${messageStyles.subtitle('Comandos Principais:')}
+🔹 /menu - Mostra o menu principal
+🔹 /stats - Mostra estatísticas do sistema
+🔹 /report - Gera relatório diário
+🔹 /morning - Envia mensagem motivacional
+🔹 /night - Envia bênção noturna
+🔹 /tempo - Mostra tempos restantes
+
+${messageStyles.subtitle('Comandos de Controle:')}
+🔹 /ligar - Liga o bot
+🔹 /desligar - Desliga o bot
+🔹 /reiniciar - Reinicia o bot
+🔹 /help - Mostra esta mensagem`;
+
+    await this.sendMessageWithRetry(chatId, help, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
+    });
+  }
+
+  async sendDailyReport(chatId) {
+    const report = `
+${messageStyles.title('📋 Relatório Diário')}
+
+${messageStyles.stats(`📊 Operações Realizadas: ${this.stats.dailyOperations}`)}
+${messageStyles.stats(`📈 Taxa de Sucesso: ${((this.stats.dailyOperations / this.stats.totalOperations) * 100).toFixed(2)}%`)}
+${messageStyles.stats(`⏱️ Tempo em Operação: ${moment.duration(Date.now() - this.startTime).humanize()}`)}
+
+${messageStyles.time(`Data: ${moment().format('DD/MM/YYYY')}`)}
+${messageStyles.time(`Hora: ${moment().format('HH:mm:ss')}`)}`;
+
+    await this.sendMessageWithRetry(chatId, report, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
+      }
+    });
+  }
+
+  async sendPinnedMessage(chatId, text) {
     try {
-      const chatId = msg.chat.id;
-      const now = moment();
+      if (this.pinnedMessageId) {
+        await this.bot.deleteMessage(this.channelId, this.pinnedMessageId);
+      }
+
+      const result = await this.sendMessageWithRetry(this.channelId, text, { parse_mode: 'HTML' });
+      this.pinnedMessageId = result.message_id;
+      await this.bot.pinChatMessage(this.channelId, this.pinnedMessageId);
       
-      // Calcular tempos restantes
-      const nextOperation = moment().hour(START_HOUR).minute(0).second(0);
-      if (now.isAfter(nextOperation)) {
-        nextOperation.add(1, 'day');
-      }
-
-      const nextMotivation = moment().hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
-      if (now.isAfter(nextMotivation)) {
-        nextMotivation.add(1, 'day');
-      }
-
-      const operationsEnd = moment().hour(END_HOUR).minute(0).second(0);
-      if (now.isAfter(operationsEnd)) {
-        operationsEnd.add(1, 'day');
-      }
-
-      const nightBlessing = moment().hour(NIGHT_BLESSING_HOUR).minute(0).second(0);
-      if (now.isAfter(nightBlessing)) {
-        nightBlessing.add(1, 'day');
-      }
-
-      const message = `
-${messageStyles.title('⏰ TEMPOS RESTANTES')}
-
-${messageStyles.subtitle('🌅 Próxima Motivação:')}
-${messageStyles.time(moment.duration(nextMotivation.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.subtitle('🎯 Próximas Operações:')}
-${messageStyles.time(moment.duration(nextOperation.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.subtitle('🔚 Fim das Operações:')}
-${messageStyles.time(moment.duration(operationsEnd.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.subtitle('🌙 Bênção Noturna:')}
-${messageStyles.time(moment.duration(nightBlessing.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.info('Horário atual em Moçambique:')}
-${messageStyles.time(now.format('HH:mm:ss'))}`;
-
-      await this.sendMessageWithRetry(chatId, message, { parse_mode: 'HTML' });
+      await this.sendMessageWithRetry(chatId, messageStyles.success('Mensagem fixada com sucesso!'), { parse_mode: 'HTML' });
+      await this.sendAdminMenu(chatId);
     } catch (error) {
-      logError(`Erro ao processar comando /tempo: ${error}`);
-      await this.sendMessageWithRetry(msg.chat.id, messageStyles.error('Erro ao processar comando. Tente novamente.'), { parse_mode: 'HTML' });
+      logError(`Erro ao fixar mensagem: ${error}`);
+      await this.sendMessageWithRetry(chatId, messageStyles.error('Erro ao fixar mensagem. Tente novamente.'), { parse_mode: 'HTML' });
+      await this.sendAdminMenu(chatId);
+    }
+  }
+
+  async sendAnnouncement(chatId, session) {
+    try {
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: session.button1Text, url: session.button1Url }],
+          [{ text: session.button2Text, url: session.button2Url }]
+        ]
+      };
+
+      if (session.mediaId) {
+        switch (session.mediaType) {
+          case 'photo':
+            await this.bot.sendPhoto(this.channelId, session.mediaId, {
+              caption: session.announcementText,
+              parse_mode: 'HTML',
+              reply_markup: keyboard
+            });
+            break;
+          case 'video':
+            await this.bot.sendVideo(this.channelId, session.mediaId, {
+              caption: session.announcementText,
+              parse_mode: 'HTML',
+              reply_markup: keyboard
+            });
+            break;
+          case 'document':
+            await this.bot.sendDocument(this.channelId, session.mediaId, {
+              caption: session.announcementText,
+              parse_mode: 'HTML',
+              reply_markup: keyboard
+            });
+            break;
+        }
+      } else {
+        await this.sendMessageWithRetry(this.channelId, session.announcementText, {
+          parse_mode: 'HTML',
+          reply_markup: keyboard
+        });
+      }
+
+      await this.sendMessageWithRetry(chatId, messageStyles.success('Comunicado enviado com sucesso!'), { parse_mode: 'HTML' });
+      await this.sendAdminMenu(chatId);
+    } catch (error) {
+      logError(`Erro ao enviar comunicado: ${error}`);
+      await this.sendMessageWithRetry(chatId, messageStyles.error('Erro ao enviar comunicado. Tente novamente.'), { parse_mode: 'HTML' });
+      await this.sendAdminMenu(chatId);
     }
   }
 
@@ -920,11 +1046,6 @@ ${messageStyles.time(now.format('HH:mm:ss'))}`;
   isInOperatingHours() {
     const currentHour = moment().hour();
     return currentHour >= START_HOUR && currentHour < END_HOUR;
-  }
-
-  async isAdmin(chatId) {
-    const session = this.adminSessions.get(chatId);
-    return session && session.step === 'authenticated';
   }
 }
 
