@@ -136,13 +136,13 @@ class OperationsBot {
     // Adicionar novo comando
     this.bot.onText(/\/tempo/, (msg) => this.handleTempoCommand(msg));
 
-    // Iniciar operações automaticamente se estiver dentro do horário
-    const currentHour = moment().hour();
-    if (currentHour >= START_HOUR && currentHour < END_HOUR) {
-      this.startOperations();
-    }
-
     logSuccess('Sistema Quantum totalmente operacional!');
+  }
+
+  // Método isAdmin que faltava
+  async isAdmin(chatId) {
+    const session = this.adminSessions.get(chatId);
+    return session && session.step === 'authenticated';
   }
 
   reconnect() {
@@ -264,49 +264,66 @@ class OperationsBot {
   }
 
   async handleTempoCommand(msg) {
-    const chatId = msg.chat.id;
-    const now = moment();
-    
-    // Calcular tempos restantes
-    const nextOperation = moment().hour(START_HOUR).minute(0).second(0);
-    if (now.isAfter(nextOperation)) {
-      nextOperation.add(1, 'day');
-    }
+    try {
+      const chatId = msg.chat.id;
+      
+      // Verifica se é admin
+      if (!await this.isAdmin(chatId)) {
+        await this.sendMessageWithRetry(chatId, messageStyles.error('Você precisa fazer login primeiro!'), { parse_mode: 'HTML' });
+        return;
+      }
 
-    const nextMotivation = moment().hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
-    if (now.isAfter(nextMotivation)) {
-      nextMotivation.add(1, 'day');
-    }
+      const now = moment().tz(TIMEZONE);
+      
+      // Calcular tempos restantes
+      const nextOperation = moment().tz(TIMEZONE).hour(START_HOUR).minute(0).second(0);
+      if (now.isAfter(nextOperation)) {
+        nextOperation.add(1, 'day');
+      }
 
-    const operationsEnd = moment().hour(END_HOUR).minute(0).second(0);
-    if (now.isAfter(operationsEnd)) {
-      operationsEnd.add(1, 'day');
-    }
+      const nextMotivation = moment().tz(TIMEZONE).hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
+      if (now.isAfter(nextMotivation)) {
+        nextMotivation.add(1, 'day');
+      }
 
-    const nightBlessing = moment().hour(NIGHT_BLESSING_HOUR).minute(0).second(0);
-    if (now.isAfter(nightBlessing)) {
-      nightBlessing.add(1, 'day');
-    }
+      const operationsEnd = moment().tz(TIMEZONE).hour(END_HOUR).minute(0).second(0);
+      if (now.isAfter(operationsEnd)) {
+        operationsEnd.add(1, 'day');
+      }
 
-    const message = `
+      const nightBlessing = moment().tz(TIMEZONE).hour(NIGHT_BLESSING_HOUR).minute(0).second(0);
+      if (now.isAfter(nightBlessing)) {
+        nightBlessing.add(1, 'day');
+      }
+
+      const message = `
 ${messageStyles.title('⏰ TEMPOS RESTANTES')}
 
 ${messageStyles.subtitle('🌅 Próxima Motivação:')}
-${messageStyles.time(moment.duration(nextMotivation.diff(now)).format('HH:mm:ss'))}
+${messageStyles.time(moment.duration(nextMotivation.diff(now)).humanize())}
 
 ${messageStyles.subtitle('🎯 Próximas Operações:')}
-${messageStyles.time(moment.duration(nextOperation.diff(now)).format('HH:mm:ss'))}
+${messageStyles.time(moment.duration(nextOperation.diff(now)).humanize())}
 
 ${messageStyles.subtitle('🔚 Fim das Operações:')}
-${messageStyles.time(moment.duration(operationsEnd.diff(now)).format('HH:mm:ss'))}
+${messageStyles.time(moment.duration(operationsEnd.diff(now)).humanize())}
 
 ${messageStyles.subtitle('🌙 Bênção Noturna:')}
-${messageStyles.time(moment.duration(nightBlessing.diff(now)).format('HH:mm:ss'))}
+${messageStyles.time(moment.duration(nightBlessing.diff(now)).humanize())}
 
 ${messageStyles.info('Horário atual em Moçambique:')}
 ${messageStyles.time(now.format('HH:mm:ss'))}`;
 
-    await this.sendMessageWithRetry(chatId, message, { parse_mode: 'HTML' });
+      await this.sendMessageWithRetry(chatId, message, { 
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: '🔄 Atualizar', callback_data: 'view_times' }]]
+        }
+      });
+    } catch (error) {
+      logError(`Erro ao processar comando /tempo: ${error}`);
+      await this.sendMessageWithRetry(msg.chat.id, messageStyles.error('Erro ao processar comando. Tente novamente.'), { parse_mode: 'HTML' });
+    }
   }
 
   async handleMessage(msg) {
@@ -668,13 +685,15 @@ ${messageStyles.info('📊 Próxima operação em breve!')}`;
       this.performHealthCheck();
     });
 
+    logSuccess(' Here's the continuation of the code exactly where it left off:
+
     logSuccess('Agendamentos configurados com sucesso');
   }
 
   async performHealthCheck() {
     const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
     const currentHour = moment().hour();
-    const shouldBeOperating = currentHour >= START_HOUR && currentHour < END_HOUR ;
+    const shouldBeOperating = currentHour >= START_HOUR && currentHour < END_HOUR;
 
     if (shouldBeOperating && !this.isOperating && !this.maintenanceMode) {
       logWarning('Sistema detectou inconsistência no estado de operação');
