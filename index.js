@@ -704,7 +704,7 @@ ${messageStyles.time(`Hora: ${moment().format('HH:mm:ss')}`)}`;
           case 'maintenance_on':
             this.maintenanceMode = true;
             this.stats.maintenanceCount++;
-            this.stats.lastMaintenance Date = moment().format('DD/MM/YYYY HH:mm:ss');
+            this.stats.lastMaintenanceDate = moment().format('DD/MM/YYYY HH:mm:ss');
             this.channelManagers.forEach(async (manager) => {
               await this.sendMessageWithRetry(manager.channel.id, messageStyles.warning('🔧 SISTEMA EM MANUTENÇÃO\n\nOperações temporariamente suspensas.'), { parse_mode: 'HTML' });
               manager.stopOperations();
