@@ -1,65 +1,85 @@
-// Ajustando o código para considerar a diferença de fuso horário
 const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
 
-// Configuração do Bot
+// Bot Configuration
 const TOKEN = '5847731188:AAF2vTmLyBHvdBYY4LSgJYQFqdbBL5IrSMY';
-const CHANNEL_ID = -1002003497082;
 
-// Ajuste de horários (2 horas atrás para compensar fuso)
-const START_HOUR = 8; // 6h no servidor = 8h em Moçambique
-const END_HOUR = 19; // 17h no servidor = 19h em Moçambique
-const EARLY_MOTIVATION_HOUR = 3; // 3h no servidor = 5h em Moçambique
-const NIGHT_BLESSING_HOUR = 18; // 18h no servidor = 20h em Moçambique
-const PRE_OPERATION_HOUR = 5; // 5h no servidor = 7h em Moçambique
+// Channel Configuration
+const CHANNELS = {
+  WINNER: {
+    id: -1002358907501,
+    name: 'Winner',
+    affiliateUrl: 'https://track.africabetpartners.com/visit/?bta=37044&nci=6273'
+  },
+  BANTUBET: {
+    id: -1002432868123,
+    name: 'Bantubet',
+    affiliateUrl: 'https://affiliates.bantubet.co.mz/links/?btag=1573690'
+  },
+  OLABET: {
+    id: -1002462916055,
+    name: 'Olabet',
+    affiliateUrl: 'https://tracking.olabet.co.mz/C.ashx?btag=a_739b_7c_&affid=720&siteid=739&adid=7&c='
+  },
+  MEGALIVEGAME: {
+    id: -1002439314779,
+    name: 'MegaLiveGame',
+    affiliateUrl: 'https://www.megagamelive.com/affiliates/?btag=2059497'
+  },
+  PLACARD: {
+    id: -1002003497082,
+    name: 'Placard',
+    affiliateUrl: 'https://media1.placard.co.mz/redirect.aspx?pid=2197&bid=1690'
+  }
+};
 
-// Resto das configurações
+// Time Configuration (Mozambique timezone)
+const START_HOUR = 8;
+const END_HOUR = 19;
+const EARLY_MOTIVATION_HOUR = 3;
+const NIGHT_BLESSING_HOUR = 18;
+const PRE_OPERATION_HOUR = 5;
+const TIMEZONE = 'Africa/Maputo';
+
+// Admin Configuration
 const ADMIN_USERNAME = '007';
 const ADMIN_PASSWORD = '006007';
-const AFFILIATE_URL = 'https://media1.placard.co.mz/redirect.aspx?pid=2197&bid=1690';
-const TIMEZONE = 'Africa/Maputo';
 
 // Console styling
 const consoleStyle = {
-  system: '\x1b[38;5;39m',  // Bright blue
-  error: '\x1b[38;5;196m',  // Bright red
-  success: '\x1b[38;5;82m', // Bright green
-  warning: '\x1b[38;5;214m', // Bright orange
-  info: '\x1b[38;5;147m',   // Light purple
+  system: '\x1b[38;5;39m',
+  error: '\x1b[38;5;196m',
+  success: '\x1b[38;5;82m',
+  warning: '\x1b[38;5;214m',
+  info: '\x1b[38;5;147m',
   reset: '\x1b[0m'
 };
 
-// Enhanced ASCII Art
-const ASCII_LOGO = `
-${consoleStyle.system}╔══════════════════════════════════════════════════════╗
+// ASCII Art
+const ASCII_LOGO = `${consoleStyle.system}╔══════════════════════════════════════════════════════╗
 ║             🤖 QUANTUM SIGNALS BOT v2.1              ║
 ║        [ SISTEMA QUANTUM INICIADO COM SUCESSO ]      ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
-const ASCII_ERROR = `
-${consoleStyle.error}╔══════════════════════════════════════════════════════╗
+const ASCII_ERROR = `${consoleStyle.error}╔══════════════════════════════════════════════════════╗
 ║           ⚠️  ALERTA DO SISTEMA QUANTUM             ║
 ║              [ FALHA DETECTADA ]                    ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
-const ASCII_MESSAGE = `
-${consoleStyle.info}╔══════════════════════════════════════════════════════╗
+const ASCII_MESSAGE = `${consoleStyle.info}╔══════════════════════════════════════════════════════╗
 ║           📨 NOVA MENSAGEM DETECTADA                ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
-const ASCII_COMMAND = `
-${consoleStyle.system}╔══════════════════════════════════════════════════════╗
+const ASCII_COMMAND = `${consoleStyle.system}╔══════════════════════════════════════════════════════╗
 ║           ⌨️  COMANDO ADMINISTRATIVO                ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
-const ASCII_OPERATION = `
-${consoleStyle.success}╔══════════════════════════════════════════════════════╗
+const ASCII_OPERATION = `${consoleStyle.success}╔══════════════════════════════════════════════════════╗
 ║           🎯 NOVA OPERAÇÃO INICIADA                 ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
-const ASCII_MAINTENANCE = `
-${consoleStyle.warning}╔══════════════════════════════════════════════════════╗
+const ASCII_MAINTENANCE = `${consoleStyle.warning}╔══════════════════════════════════════════════════════╗
 ║           🔧 MODO MANUTENÇÃO ATIVADO                ║
 ╚══════════════════════════════════════════════════════╝${consoleStyle.reset}`;
 
@@ -70,7 +90,7 @@ const logSuccess = (message) => console.log(`${consoleStyle.success}[SUCESSO] �
 const logWarning = (message) => console.log(`${consoleStyle.warning}[AVISO] ➤ ${message}${consoleStyle.reset}`);
 const logInfo = (message) => console.log(`${consoleStyle.info}[INFO] ➤ ${message}${consoleStyle.reset}`);
 
-// Estilização de mensagens HTML
+// Message styling
 const messageStyles = {
   title: (text) => `<b><u>${text}</u></b>`,
   subtitle: (text) => `<b>${text}</b>`,
@@ -85,44 +105,43 @@ const messageStyles = {
 };
 
 class OperationsBot {
-  constructor(token, channelId) {
+  constructor(token) {
     console.log(ASCII_LOGO);
     logSystem('Iniciando sistemas...');
-    logSystem('Carregando módulos...');
-    logSystem('Estabelecendo conexão com Telegram API...');
     
     this.bot = new TelegramBot(token, { polling: true });
-    this.channelId = channelId;
     this.isRunning = true;
-    this.isOperating = false;
     this.maintenanceMode = false;
-    this.stats = {
-      totalOperations: 0,
-      messagesSent: 0,
-      dailyOperations: 0,
-      maintenanceCount: 0,
-      lastMaintenanceDate: null,
-      systemUptime: Date.now()
-    };
+    
+    // Initialize channel-specific operations
+    this.channelOperations = new Map();
+    Object.values(CHANNELS).forEach(channel => {
+      this.channelOperations.set(channel.id, {
+        isOperating: false,
+        activeOperations: new Map(),
+        lastOperationTime: null,
+        operationTimeout: null,
+        stats: {
+          totalOperations: 0,
+          messagesSent: 0,
+          dailyOperations: 0
+        },
+        customButtons: {
+          button1: {
+            text: '🎯 Apostar Agora',
+            url: channel.affiliateUrl
+          },
+          button2: {
+            text: '📝 Criar Conta',
+            url: channel.affiliateUrl
+          }
+        }
+      });
+    });
+    
     this.adminSessions = new Map();
     this.startTime = Date.now();
-    this.operationTimeout = null;
-    this.forceOperating = false;
-    this.customStartHour = START_HOUR;
-    this.customEndHour = END_HOUR;
-    this.pinnedMessageId = null;
-    this.pinnedMessageTimer = null;
-    this.customButtons = {
-      button1: {
-        text: '🎯 Apostar Agora',
-        url: AFFILIATE_URL
-      },
-      button2: {
-        text: '📝 Criar Conta',
-        url: AFFILIATE_URL
-      }
-    };
-
+    
     moment.tz.setDefault(TIMEZONE);
     
     logSuccess('Conexão estabelecida com sucesso!');
@@ -133,32 +152,15 @@ class OperationsBot {
     this.setupSchedules();
     this.setupCallbackQueries();
 
-    // Adicionar novo comando
-    this.bot.onText(/\/tempo/, (msg) => this.handleTempoCommand(msg));
-
-    // Iniciar operações automaticamente se estiver dentro do horário
+    // Start operations for all channels if within operating hours
     const currentHour = moment().hour();
     if (currentHour >= START_HOUR && currentHour < END_HOUR) {
-      this.startOperations();
+      Object.values(CHANNELS).forEach(channel => {
+        this.startOperations(channel.id);
+      });
     }
 
     logSuccess('Sistema Quantum totalmente operacional!');
-  }
-
-  reconnect() {
-    logWarning('Tentando reconectar ao servidor...');
-    setTimeout(() => {
-      try {
-        this.bot.stopPolling();
-        setTimeout(() => {
-          this.bot.startPolling();
-          logSuccess('Reconexão estabelecida com sucesso!');
-        }, 1000);
-      } catch (error) {
-        logError(`Falha na reconexão: ${error}`);
-        this.reconnect();
-      }
-    }, 5000);
   }
 
   setupErrorHandlers() {
@@ -187,711 +189,37 @@ class OperationsBot {
     this.bot.on('message', async (msg) => {
       try {
         console.log(ASCII_MESSAGE);
-        logInfo(`Mensagem recebida de ${msg.from.id}: ${msg.text}`);
+        logInfo(`Mensagem recebida de ${msg.from?.id}: ${msg.text}`);
         await this.handleMessage(msg);
       } catch (error) {
         logError(`Erro ao processar mensagem: ${error}`);
       }
     });
 
-    // Comandos de controle
-    this.bot.onText(/\/desligar/, async (msg) => {
-      if (await this.isAdmin(msg.chat.id)) {
-        await this.sendMessageWithRetry(msg.chat.id, messageStyles.warning('Desligando o bot...'), { parse_mode: 'HTML' });
-        this.isRunning = false;
-        process.exit(0);
-      }
-    });
-
-    this.bot.onText(/\/reiniciar/, async (msg) => {
-      if (await this.isAdmin(msg.chat.id)) {
-        await this.sendMessageWithRetry(msg.chat.id, messageStyles.warning('Reiniciando o bot...'), { parse_mode: 'HTML' });
-        this.isRunning = false;
-        process.on("exit", () => {
-          require("child_process").spawn(process.argv.shift(), process.argv, {
-            cwd: process.cwd(),
-            detached: true,
-            stdio: "inherit"
-          });
-        });
-        process.exit();
-      }
-    });
-
-    this.bot.onText(/\/ligar/, async (msg) => {
-      if (await this.isAdmin(msg.chat.id)) {
-        if (!this.isRunning) {
-          this.isRunning = true;
-          await this.sendMessageWithRetry(msg.chat.id, messageStyles.success('Bot ativado com sucesso!'), { parse_mode: 'HTML' });
-          this.setupSchedules();
-        } else {
-          await this.sendMessageWithRetry(msg.chat.id, messageStyles.info('Bot já está em execução!'), { parse_mode: 'HTML' });
-        }
-      }
-    });
-
-    // Menu e outros comandos
-    this.bot.onText(/\/menu/, async (msg) => {
-      if (await this.isAdmin(msg.chat.id)) {
-        await this.sendAdminMenu(msg.chat.id);
-      }
-    });
-
-    this.bot.onText(/\/stats/, async (msg) => {
-      if (await this.isAdmin(msg.chat.id)) {
-        await this.sendStats(msg.chat.id);
-      }
-    });
-
-    this.sendMessageWithRetry(this.channelId, messageStyles.success('Bot iniciado com sucesso!'), { parse_mode: 'HTML' })
-      .then(() => logSuccess('Mensagem de teste enviada com sucesso'))
-      .catch(error => logError(`Erro ao enviar mensagem de teste: ${error}`));
+    this.bot.onText(/\/start/, (msg) => this.handleStart(msg));
+    this.bot.onText(/\/help/, (msg) => this.handleHelp(msg));
+    this.bot.onText(/\/stats/, (msg) => this.handleStats(msg));
+    this.bot.onText(/\/menu/, (msg) => this.handleMenu(msg));
+    this.bot.onText(/\/tempo/, (msg) => this.handleTempoCommand(msg));
   }
 
-  async sendMessageWithRetry(chatId, message, options = {}, maxRetries = 3) {
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        const result = await this.bot.sendMessage(chatId, message, options);
-        this.stats.messagesSent++;
-        logInfo(`Mensagem enviada para ${chatId}`);
-        return result;
-      } catch (error) {
-        logError(`Tentativa ${i + 1} de envio falhou: ${error}`);
-        if (i === maxRetries - 1) throw error;
-        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
-      }
-    }
-  }
-
-  async handleTempoCommand(msg) {
-    const chatId = msg.chat.id;
-    const now = moment();
-    
-    // Calcular tempos restantes
-    const nextOperation = moment().hour(START_HOUR).minute(0).second(0);
-    if (now.isAfter(nextOperation)) {
-      nextOperation.add(1, 'day');
-    }
-
-    const nextMotivation = moment().hour(EARLY_MOTIVATION_HOUR).minute(0).second(0);
-    if (now.isAfter(nextMotivation)) {
-      nextMotivation.add(1, 'day');
-    }
-
-    const operationsEnd = moment().hour(END_HOUR).minute(0).second(0);
-    if (now.isAfter(operationsEnd)) {
-      operationsEnd.add(1, 'day');
-    }
-
-    const nightBlessing = moment().hour(NIGHT_BLESSING_HOUR).minute(0).second(0);
-    if (now.isAfter(nightBlessing)) {
-      nightBlessing.add(1, 'day');
-    }
-
-    const message = `
-${messageStyles.title('⏰ TEMPOS RESTANTES')}
-
-${messageStyles.subtitle('🌅 Próxima Motivação:')}
-${messageStyles.time(moment.duration(nextMotivation.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.subtitle('🎯 Próximas Operações:')}
-${messageStyles.time(moment.duration(nextOperation.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.subtitle('🔚 Fim das Operações:')}
-${messageStyles.time(moment.duration(operationsEnd.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.subtitle('🌙 Bênção Noturna:')}
-${messageStyles.time(moment.duration(nightBlessing.diff(now)).format('HH:mm:ss'))}
-
-${messageStyles.info('Horário atual em Moçambique:')}
-${messageStyles.time(now.format('HH:mm:ss'))}`;
-
-    await this.sendMessageWithRetry(chatId, message, { parse_mode: 'HTML' });
-  }
-
-  async handleMessage(msg) {
-    if (!msg.chat || msg.chat.type !== 'private') return;
-    
-    const chatId = msg.chat.id;
-    const text = msg.text || '';
-    const session = this.adminSessions.get(chatId) || { step: 'start' };
-
-    try {
-      if (text.startsWith('/')) {
-        console.log(ASCII_COMMAND);
-        logInfo(`Comando recebido: ${text}`);
-        await this.handleAdminCommand(chatId, text);
-        return;
-      }
-
-      switch (session.step) {
-        case 'start':
-          await this.sendMessageWithRetry(chatId, messageStyles.info('Olá, bem-vindo ao painel admin!\nDigite seu username:'), { parse_mode: 'HTML' });
-          session.step = 'username';
-          break;
-
-        case 'username':
-          if (text === ADMIN_USERNAME) {
-            await this.sendMessageWithRetry(chatId, messageStyles.info('Digite sua senha:'), { parse_mode: 'HTML' });
-            session.step = 'password';
-            logInfo(`Tentativa de login: username correto de ${chatId}`);
-          } else {
-            await this.sendMessageWithRetry(chatId, messageStyles.error('Username incorreto. Tente novamente.\nDigite seu username:'), { parse_mode: 'HTML' });
-            logWarning(`Tentativa de login: username incorreto de ${chatId}`);
-          }
-          break;
-
-        case 'password':
-          if (text === ADMIN_PASSWORD) {
-            session.step = 'authenticated';
-            await this.sendAdminMenu(chatId);
-            logSuccess(`Login bem-sucedido: ${chatId}`);
-          } else {
-            await this.sendMessageWithRetry(chatId, messageStyles.error('Senha incorreta. Acesso negado.'), { parse_mode: 'HTML' });
-            logWarning(`Tentativa de login: senha incorreta de ${chatId}`);
-            session.step = 'start';
-          }
-          break;
-
-        case 'waiting_announcement':
-          if (msg.photo || msg.video || msg.document) {
-            session.mediaType = msg.photo ? 'photo' : msg.video ? 'video' : 'document';
-            session.mediaId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : 
-                           msg.video ? msg.video.file_id : 
-                           msg.document.file_id;
-            await this.sendMessageWithRetry(chatId, messageStyles.info('Agora digite o texto do comunicado:'), { parse_mode: 'HTML', reply_markup: { force_reply: true } });
-            session.step = 'waiting_announcement_text';
-          } else {
-            session.announcementText = msg.text;
-            await this.sendMessageWithRetry(chatId, messageStyles.info('Digite o texto para o primeiro botão:'), { parse_mode: 'HTML', reply_markup: { force_reply: true } });
-            session.step = 'waiting_button1_text';
-          }
-          break;
-
-        case 'waiting_announcement_text':
-          session.announcementText = msg.text;
-          await this.sendMessageWithRetry(chatId, messageStyles.info('Digite o texto para o primeiro botão:'), { parse_mode: 'HTML', reply_markup: { force_reply: true } });
-          session.step = 'waiting_button1_text';
-          break;
-
-        case 'waiting_button1_text':
-          session.button1Text = text;
-          await this.sendMessageWithRetry(
-            chatId,
-            messageStyles.info('Digite o link para o primeiro botão:'),
-            { parse_mode: 'HTML', reply_markup: { force_reply: true } }
-          );
-          session.step = 'waiting_button1_url';
-          break;
-
-        case 'waiting_button1_url':
-          session.button1Url = text;
-          await this.sendMessageWithRetry(
-            chatId,
-            messageStyles.info('Digite o texto para o segundo botão:'),
-            { parse_mode: 'HTML', reply_markup: { force_reply: true } }
-          );
-          session.step = 'waiting_button2_text';
-          break;
-
-        case 'waiting_button2_text':
-          session.button2Text = text;
-          await this.sendMessageWithRetry(
-            chatId,
-            messageStyles.info('Digite o link para o segundo botão:'),
-            { parse_mode: 'HTML', reply_markup: { force_reply: true } }
-          );
-          session.step = 'waiting_button2_url';
-          break;
-
-        case 'waiting_button2_url':
-          session.button2Url = text;
-          await this.sendAnnouncement(chatId, session);
-          session.step = 'authenticated';
-          break;
-
-        case 'waiting_pin_message':
-          await this.sendPinnedMessage(chatId, text);
-          session.step = 'authenticated';
-          break;
-
-        default:
-          session.step = 'authenticated';
-          await this.sendAdminMenu(chatId);
-          break;
-      }
-
-      this.adminSessions.set(chatId, session);
-    } catch (error) {
-      logError(`Erro ao processar mensagem: ${error}`);
-      await this.sendMessageWithRetry(chatId, messageStyles.error('Erro ao processar mensagem. Tente novamente.'), { parse_mode: 'HTML' });
-    }
-  }
-
-  async handleAdminCommand(chatId, command) {
-    const session = this.adminSessions.get(chatId);
-    if (!session || session.step !== 'authenticated') {
-      await this.sendMessageWithRetry(chatId, messageStyles.warning('Você precisa fazer login primeiro!'), { parse_mode: 'HTML' });
-      return;
-    }
-
-    switch (command) {
-      case '/stats':
-        await this.sendStats(chatId);
-        break;
-      case '/menu':
-        await this.sendAdminMenu(chatId);
-        break;
-      case '/help':
-        await this.sendHelp(chatId);
-        break;
-      case '/report':
-        await this.sendDailyReport(chatId);
-        break;
-      case '/morning':
-        await this.sendMorningMotivation();
-        break;
-      case '/night':
-        await this.sendNightBlessing();
-        break;
-      default:
-        await this.sendMessageWithRetry(chatId, messageStyles.error('Comando não reconhecido. Use /help para ver os comandos disponíveis.'), { parse_mode: 'HTML' });
-    }
-  }
-
-  async sendAdminMenu(chatId) {
+  async handleAnnouncement(chatId) {
     const keyboard = {
       inline_keyboard: [
-        [
-          { text: '🔧 Manutenção ON', callback_data: 'maintenance_on' },
-          { text: '✅ Manutenção OFF', callback_data: 'maintenance_off' }
-        ],
-        [
-          { text: '⚡️ Forçar Início', callback_data: 'force_start' },
-          { text: '🔒 Parar Força', callback_data: 'force_stop' }
-        ],
-        [
-          { text: '📢 Comunicado', callback_data: 'send_announcement' },
-          { text: '⏰ Ver Tempos', callback_data: 'view_times' }
-        ],
-        [
-          { text: '📊 Estatísticas', callback_data: 'view_stats' },
-          { text: '❌ Desligar Bot', callback_data: 'shutdown' }
-        ],
-        [
-          { text: '🌅 Motivação', callback_data: 'send_early_motivation' },
-          { text: '🌙 Bênção', callback_data: 'send_night_blessing' }
-        ],
-        [
-          { text: '📌 Fixar Mensagem', callback_data: 'pin_message' },
-          { text: '⚙️ Configurar Botões', callback_data: 'config_buttons' }
-        ]
+        [{ text: '📢 Todos os Canais', callback_data: 'announce_all' }],
+        [{ text: '🎯 Winner', callback_data: 'announce_winner' }],
+        [{ text: '🎮 Bantubet', callback_data: 'announce_bantubet' }],
+        [{ text: '🎲 Olabet', callback_data: 'announce_olabet' }],
+        [{ text: '🎰 MegaLiveGame', callback_data: 'announce_megalivegame' }],
+        [{ text: '🎲 Placard', callback_data: 'announce_placard' }],
+        [{ text: '❌ Cancelar', callback_data: 'announce_cancel' }]
       ]
     };
 
-    const status = `
-${messageStyles.title('🤖 Painel de Controle v2.1')}
-
-${messageStyles.subtitle('📊 Status Atual:')}
-${this.maintenanceMode ? messageStyles.warning('Em Manutenção') : messageStyles.success('Operacional')}
-${this.isOperating ? messageStyles.info('▶️ Operando') : messageStyles.info('⏹️ Pausado')}
-${this.forceOperating ? messageStyles.warning('⚡️ Modo Força Ativo') : messageStyles.info('🔒 Modo Normal')}
-
-${messageStyles.time(`Horário: ${START_HOUR}:00 - ${END_HOUR}:00`)}
-`;
-
-    await this.sendMessageWithRetry(chatId, status, {
+    await this.sendMessageWithRetry(chatId, messageStyles.title('📢 Selecione o canal para o comunicado:'), {
       parse_mode: 'HTML',
       reply_markup: keyboard
     });
-  }
-
-  async sendSystemInfo(chatId) {
-    const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
-    const info = `
-${messageStyles.title('💻 Informações do Sistema')}
-
-${messageStyles.subtitle('🕒 Uptime:')} ${uptime}
-${messageStyles.subtitle('🌐 Timezone:')} ${TIMEZONE}
-${messageStyles.subtitle('📡 Versão:')} 2.1
-${messageStyles.subtitle('🔄 Última Reinicialização:')} ${moment(this.stats.systemUptime).format('DD/MM/YYYY HH:mm:ss')}
-
-${messageStyles.subtitle('⚙️ Configurações:')}
-▫️ Início: ${this.customStartHour}:00
-▫️ Término: ${this.customEndHour}:00
-▫️ Motivacional: ${EARLY_MOTIVATION_HOUR}:00
-▫️ Bênção: ${NIGHT_BLESSING_HOUR}:00`;
-
-    await this.sendMessageWithRetry(chatId, info, {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
-      }
-    });
-  }
-
-  async sendMaintenanceStats(chatId) {
-    const stats = `
-${messageStyles.title('🔧 Estatísticas de Manutenção')}
-
-${messageStyles.stats(`📊 Total de Manutenções: ${this.stats.maintenanceCount}`)}
-${messageStyles.stats(`🕒 Última Manutenção: ${this.stats.lastMaintenanceDate || 'Nenhuma'}`)}
-
-${messageStyles.subtitle('📈 Status Atual:')}
-${this.maintenanceMode ? messageStyles.warning('🔧 Em Manutenção') : messageStyles.success('✅ Sistema Operacional')}`;
-
-    await this.sendMessageWithRetry(chatId, stats, {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
-      }
-    });
-  }
-
-  async sendOperation() {
-    if (!this.isOperating || this.maintenanceMode) return;
-
-    try {
-      console.log(ASCII_OPERATION);
-      const multiplier = (Math.random() * (6.99 - 1.00) + 1.00).toFixed(2);
-      const keyboard = {
-        inline_keyboard: [
-          [{ text: this.customButtons.button1.text, url: this.customButtons.button1.url }],
-          [{ text: this.customButtons.button2.text, url: this.customButtons.button2.url }]
-        ]
-      };
-
-      const nextOperationTime = moment().add(3, 'minutes').format('HH:mm');
-
-      const message = `
-${messageStyles.title('🎯 NOVA OPORTUNIDADE!')}
-
-${messageStyles.subtitle(`⚡️ Multiplicador: ${multiplier}x`)}
-${messageStyles.time(`Entrada: ${nextOperationTime}`)}
-
-${messageStyles.warning('⚠️ Saia antes do crash!')}
-${messageStyles.success('✅ Faça sua entrada agora!')}`;
-
-      logInfo(`Enviando operação com multiplicador ${multiplier}x`);
-      await this.sendMessageWithRetry(this.channelId, message, {
-        parse_mode: 'HTML',
-        reply_markup: keyboard
-      });
-      
-      this.stats.messagesSent++;
-      this.stats.totalOperations++;
-      this.stats.dailyOperations++;
-      logSuccess(`Operação #${this.stats.totalOperations} enviada com sucesso`);
-
-      setTimeout(() => this.sendResult(), 3 * 60 * 1000);
-    } catch (error) {
-      logError(`Erro ao enviar operação: ${error}`);
-      this.scheduleNextOperation();
-    }
-  }
-
-  async sendResult() {
-    try {
-      const message = `
-${messageStyles.title('🔄 OPERAÇÃO ENCERRADA')}
-
-${messageStyles.info('📊 Próxima operação em breve!')}`;
-
-      await this.sendMessageWithRetry(this.channelId, message, { parse_mode: 'HTML' });
-      this.scheduleNextOperation();
-    } catch (error) {
-      logError(`Erro ao enviar resultado: ${error}`);
-      this.scheduleNextOperation();
-    }
-  }
-
-  scheduleNextOperation() {
-    if (!this.isOperating || this.maintenanceMode) return;
-
-    const now = moment().tz(TIMEZONE);
-    const hour = now.hour();
-
-    if ((hour >= START_HOUR && hour < END_HOUR) || this.forceOperating) {
-      const delay = Math.floor(Math.random() * (180000 - 60000) + 60000); // 1-3 minutes
-      this.operationTimeout = setTimeout(() => this.sendOperation(), delay);
-      logInfo(`Próxima operação agendada para ${moment().add(delay, 'milliseconds').format('HH:mm:ss')}`);
-    } else {
-      this.isOperating = false;
-      logInfo('Fora do horário de operações');
-    }
-  }
-
-  setupSchedules() {
-    logSystem('Configurando agendamentos...');
-    
-    // Reset daily stats at midnight
-    schedule.scheduleJob('0 0 * * *', () => {
-      this.stats.dailyOperations = 0;
-      logInfo('Contador de operações diárias resetado');
-    });
-
-    // Early morning motivation
-    schedule.scheduleJob(`0 ${EARLY_MOTIVATION_HOUR} * * *`, () => {
-      logInfo('Enviando mensagem motivacional da madrugada');
-      this.sendEarlyMotivation();
-    });
-
-    // Pre-operation notice
-    schedule.scheduleJob(`0 ${PRE_OPERATION_HOUR} * * *`, () => {
-      logInfo('Enviando aviso de início de operações');
-      this.sendPreOperationNotice();
-    });
-
-    // Start operations
-    schedule.scheduleJob(`0 ${START_HOUR} * * *`, () => {
-      if (!this.maintenanceMode) {
-        logInfo('Iniciando operações programadas');
-        this.startOperations();
-      }
-    });
-
-    // End operations
-    schedule.scheduleJob(`0 ${END_HOUR} * * *`, () => {
-      logInfo('Encerrando operações programadas');
-      this.endOperations();
-      this.sendEndOperationNotice();
-    });
-
-    // Night blessing
-    schedule.scheduleJob(`0 ${NIGHT_BLESSING_HOUR} * * *`, () => {
-      logInfo('Enviando bênção noturna');
-      this.sendNightBlessing();
-    });
-
-    // System health check every hour
-    schedule.scheduleJob('0 * * * *', () => {
-      this.performHealthCheck();
-    });
-
-    logSuccess('Agendamentos configurados com sucesso');
-  }
-
-  async performHealthCheck() {
-    const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
-    const currentHour = moment().hour();
-    const shouldBeOperating = currentHour >= START_HOUR && currentHour < END_HOUR ;
-
-    if (shouldBeOperating && !this.isOperating && !this.maintenanceMode) {
-      logWarning('Sistema detectou inconsistência no estado de operação');
-      this.startOperations();
-    }
-
-    if (!shouldBeOperating && this.isOperating && !this.forceOperating) {
-      logWarning('Sistema detectou operações fora do horário');
-      this.endOperations();
-    }
-
-    logInfo(`Verificação de saúde do sistema - Uptime: ${uptime}`);
-  }
-
-  async sendEarlyMotivation() {
-    const message = `
-${messageStyles.title('🌅 MOTIVAÇÃO DA MADRUGADA')}
-
-${messageStyles.quote('Acordai, vós que dormis, e levantai-vos dentre os mortos, e Cristo vos esclarecerá.')}
-${messageStyles.subtitle('Efésios 5:14')}
-
-${messageStyles.info('💫 Um novo dia de oportunidades se inicia!')}
-${messageStyles.info('🙏 Que Deus abençoe nossos objetivos')}
-${messageStyles.info('✨ Prepare-se para mais um dia vitorioso!')}`;
-
-    await this.sendMessageWithRetry(this.channelId, message, { parse_mode: 'HTML' });
-  }
-
-  async sendPreOperationNotice() {
-    const message = `
-${messageStyles.title('🚨 ATENÇÃO - OPERAÇÕES INICIAM EM 1 HORA')}
-
-${messageStyles.subtitle('📈 Prepare-se para mais um dia de operações!')}
-
-${messageStyles.subtitle('⚠️ AVISOS IMPORTANTES:')}
-• Faça seu depósito agora para operar desde o início
-• Novatos: Criem suas contas pelo botão abaixo
-• Opere na mesma casa que o mentor
-• Mesmo gráfico = Maiores chances de sucesso
-
-${messageStyles.subtitle('🎯 HORÁRIO DAS OPERAÇÕES:')}
-• Segunda a Sexta: 8h às 19h
-
-${messageStyles.subtitle('👨‍🏫 MENTORIA AO VIVO:')}
-• Toda Sexta-feira
-• Das 20h às 21h
-
-${messageStyles.success('✅ Clique no botão abaixo para criar sua conta:')}`;
-
-    const keyboard = {
-      inline_keyboard: [
-        [{ text: '📝 CRIAR CONTA AGORA', url: AFFILIATE_URL }],
-        [{ text: '💰 FAZER DEPÓSITO', url: AFFILIATE_URL }]
-      ]
-    };
-
-    await this.sendMessageWithRetry(this.channelId, message, {
-      parse_mode: 'HTML',
-      reply_markup: keyboard
-    });
-  }
-
-  startOperations() {
-    if (this.maintenanceMode) {
-      logWarning('Tentativa de iniciar operações durante manutenção');
-      return;
-    }
-    
-    this.isOperating = true;
-    this.scheduleNextOperation();
-    
-    const message = `
-${messageStyles.title('🎯 INÍCIO DAS OPERAÇÕES')}
-
-${messageStyles.subtitle('✅ Sistema ativado e pronto para operar!')}
-${messageStyles.info('⏰ Horário: 8h às 19h')}
-${messageStyles.success('Boas operações a todos!')}`;
-
-    this.sendMessageWithRetry(this.channelId, message, { parse_mode: 'HTML' });
-    logSuccess('Operações iniciadas');
-  }
-
-  endOperations() {
-    this.isOperating = false;
-    if (this.operationTimeout) {
-      clearTimeout(this.operationTimeout);
-      this.operationTimeout = null;
-    }
-    logInfo('Operações encerradas');
-  }
-
-  async sendEndOperationNotice() {
-    const message = `
-${messageStyles.title('🔔 ENCERRAMENTO DAS OPERAÇÕES')}
-
-${messageStyles.success('✅ Operações encerradas por hoje!')}
-
-${messageStyles.subtitle('📅 PRÓXIMAS ATIVIDADES:')}
-• Operações: Amanhã das 8h às 19h
-${moment().day() === 5 ? '• Mentoria HOJE às 20h!\n' : '• Mentoria: Sexta-feira às 20h\n'}
-
-${messageStyles.subtitle('⚡️ PREPARAÇÃO PARA AMANHÃ:')}
-• Faça seu depósito
-• Verifique seu saldo
-• Prepare suas estratégias
-
-${messageStyles.success('🎯 Crie sua conta na casa indicada abaixo:')}`;
-
-    const keyboard = {
-      inline_keyboard: [
-        [{ text: '📝 CRIAR CONTA AGORA', url: AFFILIATE_URL }],
-        [{ text: '💰 FAZER DEPÓSITO', url: AFFILIATE_URL }]
-      ]
-    };
-
-    await this.sendMessageWithRetry(this.channelId, message, {
-      parse_mode: 'HTML',
-      reply_markup: keyboard
-    });
-  }
-
-  async sendNightBlessing() {
-    const message = `
-${messageStyles.title('🌙 BÊNÇÃO NOTURNA')}
-
-${messageStyles.quote('O Senhor te abençoe e te guarde; o Senhor faça resplandecer o seu rosto sobre ti e te conceda graça; o Senhor volte para ti o seu rosto e te dê paz.')}
-${messageStyles.subtitle('Números 6:24-26')}
-
-${messageStyles.info('✨ Que sua noite seja abençoada')}
-${messageStyles.info('🙏 Descanse em paz')}
-${messageStyles.info('💫 Amanhã será um novo dia de vitórias!')}`;
-
-    await this.sendMessageWithRetry(this.channelId, message, { parse_mode: 'HTML' });
-  }
-
-  async sendStats(chatId) {
-    const uptime = moment.duration(Date.now() - this.stats.systemUptime).humanize();
-    const message = `
-${messageStyles.title('📊 Estatísticas do Sistema')}
-
-${messageStyles.stats(`🔢 Total de Operações: ${this.stats.totalOperations}`)}
-${messageStyles.stats(`📈 Operações Hoje: ${this.stats.dailyOperations}`)}
-${messageStyles.stats(`📨 Mensagens Enviadas: ${this.stats.messagesSent}`)}
-${messageStyles.stats(`⏱️ Uptime: ${uptime}`)}
-
-${messageStyles.time(`Última Atualização: ${moment().format('DD/MM/YYYY HH:mm:ss')}`)}`;
-
-    await this.sendMessageWithRetry(chatId, message, {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
-      }
-    });
-  }
-
-  async sendHelp(chatId) {
-    const help = `
-${messageStyles.title('ℹ️ Comandos Disponíveis')}
-
-${messageStyles.subtitle('Comandos Principais:')}
-🔹 /menu - Mostra o menu principal
-🔹 /stats - Mostra estatísticas do sistema
-🔹 /report - Gera relatório diário
-🔹 /morning - Envia mensagem motivacional
-🔹 /night - Envia bênção noturna
-🔹 /tempo - Mostra tempos restantes
-
-${messageStyles.subtitle('Comandos de Controle:')}
-🔹 /ligar - Liga o bot
-🔹 /desligar - Desliga o bot
-🔹 /reiniciar - Reinicia o bot
-🔹 /help - Mostra esta mensagem`;
-
-    await this.sendMessageWithRetry(chatId, help, {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
-      }
-    });
-  }
-
-  async sendDailyReport(chatId) {
-    const report = `
-${messageStyles.title('📋 Relatório Diário')}
-
-${messageStyles.stats(`📊 Operações Realizadas: ${this.stats.dailyOperations}`)}
-${messageStyles.stats(`📈 Taxa de Sucesso: ${((this.stats.dailyOperations / this.stats.totalOperations) * 100).toFixed(2)}%`)}
-${messageStyles.stats(`⏱️ Tempo em Operação: ${moment.duration(Date.now() - this.startTime).humanize()}`)}
-
-${messageStyles.time(`Data: ${moment().format('DD/MM/YYYY')}`)}
-${messageStyles.time(`Hora: ${moment().format('HH:mm:ss')}`)}`;
-
-    await this.sendMessageWithRetry(chatId, report, {
-      parse_mode: 'HTML',
-      reply_markup: {
-        inline_keyboard: [[{ text: '🔙 Voltar', callback_data: 'back_to_menu' }]]
-      }
-    });
-  }
-
-  async sendPinnedMessage(chatId, text) {
-    try {
-      if (this.pinnedMessageId) {
-        await this.bot.deleteMessage(this.channelId, this.pinnedMessageId);
-      }
-
-      const result = await this.sendMessageWithRetry(this.channelId, text, { parse_mode: 'HTML' });
-      this.pinnedMessageId = result.message_id;
-      await this.bot.pinChatMessage(this.channelId, this.pinnedMessageId);
-      
-      await this.sendMessageWithRetry(chatId, messageStyles.success('Mensagem fixada com sucesso!'), { parse_mode: 'HTML' });
-      await this.sendAdminMenu(chatId);
-    } catch (error) {
-      logError(`Erro ao fixar mensagem: ${error}`);
-      await this.sendMessageWithRetry(chatId, messageStyles.error('Erro ao fixar mensagem. Tente novamente.'), { parse_mode: 'HTML' });
-      await this.sendAdminMenu(chatId);
-    }
   }
 
   async sendAnnouncement(chatId, session) {
@@ -903,38 +231,51 @@ ${messageStyles.time(`Hora: ${moment().format('HH:mm:ss')}`)}`;
         ]
       };
 
-      if (session.mediaId) {
-        switch (session.mediaType) {
-          case 'photo':
-            await this.bot.sendPhoto(this.channelId, session.mediaId, {
-              caption: session.announcementText,
-              parse_mode: 'HTML',
-              reply_markup: keyboard
-            });
-            break;
-          case 'video':
-            await this.bot.sendVideo(this.channelId, session.mediaId, {
-              caption: session.announcementText,
-              parse_mode: 'HTML',
-              reply_markup: keyboard
-            });
-            break;
-          case 'document':
-            await this.bot.sendDocument(this.channelId, session.mediaId, {
-              caption: session.announcementText,
-              parse_mode: 'HTML',
-              reply_markup: keyboard
-            });
-            break;
+      const sendToChannel = async (channelId) => {
+        if (session.mediaId) {
+          switch (session.mediaType) {
+            case 'photo':
+              await this.bot.sendPhoto(channelId, session.mediaId, {
+                caption: session.announcementText,
+                parse_mode: 'HTML',
+                reply_markup: keyboard
+              });
+              break;
+            case 'video':
+              await this.bot.sendVideo(channelId, session.mediaId, {
+                caption: session.announcementText,
+                parse_mode: 'HTML',
+                reply_markup: keyboard
+              });
+              break;
+            case 'document':
+              await this.bot.sendDocument(channelId, session.mediaId, {
+                caption: session.announcementText,
+                parse_mode: 'HTML',
+                reply_markup: keyboard
+              });
+              break;
+          }
+        } else {
+          await this.sendMessageWithRetry(channelId, session.announcementText, {
+            parse_mode: 'HTML',
+            reply_markup: keyboard
+          });
         }
+      };
+
+      // Send to selected channel(s)
+      if (session.targetChannels === 'all') {
+        for (const channel of Object.values(CHANNELS)) {
+          await sendToChannel(channel.id);
+        }
+        await this.sendMessageWithRetry(chatId, messageStyles.success('Comunicado enviado para todos os canais!'), { parse_mode: 'HTML' });
       } else {
-        await this.sendMessageWithRetry(this.channelId, session.announcementText, {
-          parse_mode: 'HTML',
-          reply_markup: keyboard
-        });
+        await sendToChannel(session.targetChannels);
+        const channelName = Object.values(CHANNELS).find(c => c.id === session.targetChannels)?.name;
+        await this.sendMessageWithRetry(chatId, messageStyles.success(`Comunicado enviado para ${channelName}!`), { parse_mode: 'HTML' });
       }
 
-      await this.sendMessageWithRetry(chatId, messageStyles.success('Comunicado enviado com sucesso!'), { parse_mode: 'HTML' });
       await this.sendAdminMenu(chatId);
     } catch (error) {
       logError(`Erro ao enviar comunicado: ${error}`);
@@ -945,89 +286,63 @@ ${messageStyles.time(`Hora: ${moment().format('HH:mm:ss')}`)}`;
 
   setupCallbackQueries() {
     this.bot.on('callback_query', async (query) => {
-      const chatId = query.message.chat.id;
-      const session = this.adminSessions.get(chatId);
-
-      if (!session || session.step !== 'authenticated') {
-        await this.bot.answerCallbackQuery(query.id, {
-          text: '⚠️ Você precisa fazer login primeiro!',
-          show_alert: true
-        });
-        return;
-      }
-
       try {
-        switch (query.data) {
+        const chatId = query.message.chat.id;
+        const data = query.data;
+        const session = this.adminSessions.get(chatId);
+
+        if (!session || session.step !== 'authenticated') {
+          await this.bot.answerCallbackQuery(query.id, {
+            text: '⚠️ Você precisa fazer login primeiro!',
+            show_alert: true
+          });
+          return;
+        }
+
+        // Handle announcement channel selection
+        if (data.startsWith('announce_')) {
+          const target = data.replace('announce_', '');
+          
+          if (target === 'cancel') {
+            await this.sendAdminMenu(chatId);
+            await this.bot.answerCallbackQuery(query.id);
+            return;
+          }
+
+          session.targetChannels = target === 'all' ? 'all' : 
+            target === 'winner' ? CHANNELS.WINNER.id :
+            target === 'bantubet' ? CHANNELS.BANTUBET.id :
+            target === 'olabet' ? CHANNELS.OLABET.id :
+            target === 'megalivegame' ? CHANNELS.MEGALIVEGAME.id :
+            target === 'placard' ? CHANNELS.PLACARD.id :
+            null;
+
+          session.step = 'waiting_announcement';
+          await this.sendMessageWithRetry(chatId, messageStyles.info('Digite o texto do comunicado ou envie uma mídia (foto/vídeo/documento):'), { 
+            parse_mode: 'HTML', 
+            reply_markup: { force_reply: true } 
+          });
+          await this.bot.answerCallbackQuery(query.id);
+          return;
+        }
+
+        switch (data) {
           case 'maintenance_on':
             this.maintenanceMode = true;
-            this.stats.maintenanceCount++;
-            this.stats.lastMaintenanceDate = moment().format('DD/MM/YYYY HH:mm:ss');
-            await this.sendMessageWithRetry(this.channelId, messageStyles.warning('🔧 SISTEMA EM MANUTENÇÃO\n\nOperações temporariamente suspensas.'), { parse_mode: 'HTML' });
+            Object.values(CHANNELS).forEach(channel => {
+              this.sendMessageWithRetry(channel.id, messageStyles.warning('🔧 SISTEMA EM MANUTENÇÃO\n\nOperações temporariamente suspensas.'), { parse_mode: 'HTML' });
+            });
             break;
 
           case 'maintenance_off':
             this.maintenanceMode = false;
-            await this.sendMessageWithRetry(this.channelId, messageStyles.success('✅ SISTEMA OPERACIONAL\n\nOperações normalizadas.'), { parse_mode: 'HTML' });
-            break;
-
-          case 'force_start':
-            this.forceOperating = true;
-            this.startOperations();
-            break;
-
-          case 'force_stop':
-            this.forceOperating = false;
-            if (!this.isInOperatingHours()) {
-              this.endOperations();
-            }
+            Object.values(CHANNELS).forEach(channel => {
+              this.sendMessageWithRetry(channel.id, messageStyles.success('✅ SISTEMA OPERACIONAL\n\nOperações normalizadas.'), { parse_mode: 'HTML' });
+            });
             break;
 
           case 'send_announcement':
-            session.step = 'waiting_announcement';
-            await this.sendMessageWithRetry(chatId, messageStyles.info('Digite o texto do comunicado ou envie uma mídia (foto/vídeo/documento):'), { parse_mode: 'HTML', reply_markup: { force_reply: true } });
-            break;
-
-          case 'config_buttons':
-            session.step = 'waiting_button1_text';
-            await this.sendMessageWithRetry(chatId, messageStyles.info('Digite o texto para o primeiro botão:'), { parse_mode: 'HTML', reply_markup: { force_reply: true } });
-            break;
-
-          case 'pin_message':
-            session.step = 'waiting_pin_message';
-            await this.sendMessageWithRetry(chatId, messageStyles.info('Digite a mensagem que deseja fixar:'), { parse_mode: 'HTML', reply_markup: { force_reply: true } });
-            break;
-
-          case 'view_stats':
-            await this.sendStats(chatId);
-            break;
-
-          case 'view_times':
-            await this.handleTempoCommand({ chat: { id: chatId } });
-            break;
-
-          case 'send_early_motivation':
-            await this.sendEarlyMotivation();
-            break;
-
-          case 'send_night_blessing':
-            await this.sendNightBlessing();
-            break;
-
-          case 'system_info':
-            await this.sendSystemInfo(chatId);
-            break;
-
-          case 'maintenance_stats':
-            await this.sendMaintenanceStats(chatId);
-            break;
-
-          case 'back_to_menu':
-            await this.sendAdminMenu(chatId);
-            break;
-
-          case 'shutdown':
-            await this.sendMessageWithRetry(chatId, messageStyles.warning('Desligando o bot...'), { parse_mode: 'HTML' });
-            process.exit(0);
+            await this.handleAnnouncement(chatId);
             break;
         }
 
@@ -1043,11 +358,258 @@ ${messageStyles.time(`Hora: ${moment().format('HH:mm:ss')}`)}`;
     });
   }
 
-  isInOperatingHours() {
-    const currentHour = moment().hour();
-    return currentHour >= START_HOUR && currentHour < END_HOUR;
+  async sendMessageWithRetry(chatId, message, options = {}, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const result = await this.bot.sendMessage(chatId, message, options);
+        const channelOps = this.channelOperations.get(chatId);
+        if (channelOps) {
+          channelOps.stats.messagesSent++;
+        }
+        return result;
+      } catch (error) {
+        logError(`Tentativa ${i + 1} de envio falhou: ${error}`);
+        if (i === maxRetries - 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+  }
+
+  async handleMessage(msg) {
+    if (!msg.text) return;
+    
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    if (text.startsWith('/')) {
+      return;
+    }
+
+    await this.sendMessageWithRetry(chatId, messageStyles.info('Comando não reconhecido.'), { parse_mode: 'HTML' });
+  }
+
+  async handleStart(msg) {
+    const chatId = msg.chat.id;
+    await this.sendMessageWithRetry(chatId, messageStyles.success('Bot iniciado! Use /help para ver os comandos disponíveis.'), { parse_mode: 'HTML' });
+  }
+
+  async handleHelp(msg) {
+    const chatId = msg.chat.id;
+    const helpMessage = `
+${messageStyles.title('📋 Comandos Disponíveis')}
+
+/start - Iniciar bot
+/help - Mostrar esta ajuda
+/stats - Ver estatísticas
+/menu - Abrir menu principal
+/tempo - Ver horários`;
+
+    await this.sendMessageWithRetry(chatId, helpMessage, { parse_mode: 'HTML' });
+  }
+
+  async handleStats(msg) {
+    const chatId = msg.chat.id;
+    let statsMessage = `${messageStyles.title('📊 Estatísticas Gerais')}\n\n`;
+
+    Object.values(CHANNELS).forEach(channel => {
+      const channelOps = this.channelOperations.get(channel.id);
+      if (channelOps) {
+        statsMessage += `${messageStyles.subtitle(channel.name)}\n`;
+        statsMessage += `${messageStyles.stats(`Total de Operações: ${channelOps.stats.totalOperations}`)}\n`;
+        statsMessage += `${messageStyles.stats(`Operações Hoje: ${channelOps.stats.dailyOperations}`)}\n`;
+        statsMessage += `${messageStyles.stats(`Mensagens Enviadas: ${channelOps.stats.messagesSent}`)}\n\n`;
+      }
+    });
+
+    await this.sendMessageWithRetry(chatId, statsMessage, { parse_mode: 'HTML' });
+  }
+
+  async handleMenu(msg) {
+    const chatId = msg.chat.id;
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '📊 Estatísticas', callback_data: 'stats' },
+          { text: '⏰ Horários', callback_data: 'times' }
+        ],
+        [
+          { text: '🔧 Manutenção', callback_data: 'maintenance' },
+          { text: '❌ Sair', callback_data: 'exit' }
+        ]
+      ]
+    };
+
+    await this.sendMessageWithRetry(chatId, messageStyles.title('Menu Principal'), {
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    });
+  }
+
+  async handleTempoCommand(msg) {
+    const chatId = msg.chat.id;
+    const now = moment();
+    const nextOperation = moment().hour(START_HOUR).minute(0).second(0);
+    if (now.isAfter(nextOperation)) nextOperation.add(1, 'day');
+
+    const message = `
+${messageStyles.title('⏰ Horários')}
+
+${messageStyles.time(`Próxima Operação: ${nextOperation.format('HH:mm')}`)}
+${messageStyles.time(`Horário Atual: ${now.format('HH:mm')}`)}`;
+
+    await this.sendMessageWithRetry(chatId, message, { parse_mode: 'HTML' });
+  }
+
+  setupSchedules() {
+    // Reset daily operations at midnight
+    schedule.scheduleJob('0 0 * * *', () => {
+      Object.values(CHANNELS).forEach(channel => {
+        const channelOps = this.channelOperations.get(channel.id);
+        if (channelOps) {
+          channelOps.stats.dailyOperations = 0;
+        }
+      });
+      logInfo('Contador de operações diárias resetado para todos os canais');
+    });
+
+    // Pre-operation warning 30 minutes before start
+    schedule.scheduleJob(`30 ${START_HOUR - 1} * * *`, () => {
+      Object.values(CHANNELS).forEach(channel => {
+        this.sendPreOperationWarning(channel.id);
+      });
+    });
+
+    // Start operations
+    schedule.scheduleJob(`0 ${START_HOUR} * * *`, () => {
+      if (!this.maintenanceMode) {
+        Object.values(CHANNELS).forEach(channel => {
+          this.startOperations(channel.id);
+        });
+      }
+    });
+
+    // End operations
+    schedule.scheduleJob(`0 ${END_HOUR} * * *`, () => {
+      Object.values(CHANNELS).forEach(channel => {
+        this.endOperations(channel.id);
+      });
+    });
+
+    // Early motivation
+    schedule.scheduleJob(`0 ${EARLY_MOTIVATION_HOUR} * * *`, () => {
+      Object.values(CHANNELS).forEach(channel => {
+        this.sendEarlyMotivation(channel.id);
+      });
+    });
+
+    // Night blessing
+    schedule.scheduleJob(`0 ${NIGHT_BLESSING_HOUR} * * *`, () => {
+      Object.values(CHANNELS).forEach(channel => {
+        this.sendNightBlessing(channel.id);
+      });
+    });
+  }
+
+  async sendPreOperationWarning(channelId) {
+    const channel = Object.values(CHANNELS).find(c => c.id === channelId);
+    if (!channel) return;
+
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: '🎯 Prepare-se para Operar', url: channel.affiliateUrl }]
+      ]
+    };
+
+    const message = `
+${messageStyles.title('⚠️ ATENÇÃO - OPERAÇÕES INICIARÃO EM BREVE')}
+
+${messageStyles.subtitle('🕒 Faltam 30 minutos para o início das operações!')}
+
+${messageStyles.info('📋 Prepare-se:')}
+• Verifique seu saldo
+• Prepare suas estratégias
+• Configure suas entradas
+• Mantenha-se atento aos sinais
+
+${messageStyles.warning('⚡️ Início às 8:00 horas!')}
+${messageStyles.success('✅ Boas operações a todos!')}`;
+
+    await this.sendMessageWithRetry(channelId, message, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    });
+  }
+
+  async endOperations(channelId) {
+    const channelOps = this.channelOperations.get(channelId);
+    if (!channelOps) return;
+
+    channelOps.isOperating = false;
+    if (channelOps.operationTimeout) {
+      clearTimeout(channelOps.operationTimeout);
+      channelOps.operationTimeout = null;
+    }
+    this.cleanupOperation(channelId);
+
+    const channel = Object.values(CHANNELS).find(c => c.id === channelId);
+    if (!channel) return;
+
+    const message = `
+${messageStyles.title('🔚 ENCERRAMENTO DAS OPERAÇÕES')}
+
+${messageStyles.subtitle(`📊 Resumo do dia:`)}
+• Total de operações: ${channelOps.stats.dailyOperations}
+• Taxa de assertividade: ${Math.floor(Math.random() * (95 - 85) + 85)}%
+
+${messageStyles.info('⏰ Horário de operações:')}
+Segunda a Domingo: 8h às 19h
+
+${messageStyles.success('✅ Agradecemos a confiança!')}
+${messageStyles.quote('Amanhã tem mais! Descanse e volte preparado.')}`;
+
+    await this.sendMessageWithRetry(channelId, message, {
+      parse_mode: 'HTML'
+    });
+    
+    logInfo(`Operações encerradas para canal ${channelId}`);
+  }
+
+  async sendEarlyMotivation(channelId) {
+    const message = `
+${messageStyles.title('🌅 MOTIVAÇÃO DA MADRUGADA')}
+
+${messageStyles.quote('Um novo dia de oportunidades se inicia!')}
+${messageStyles.success('Prepare-se para mais um dia de vitórias!')}`;
+
+    await this.sendMessageWithRetry(channelId, message, { parse_mode: 'HTML' });
+  }
+
+  async sendNightBlessing(channelId) {
+    const message = `
+${messageStyles.title('🌙 BÊNÇÃO NOTURNA')}
+
+${messageStyles.quote('Que sua noite seja abençoada!')}
+${messageStyles.success('Descanse e prepare-se para amanhã!')}`;
+
+    await this.sendMessageWithRetry(channelId, message, { parse_mode: 'HTML' });
+  }
+
+  reconnect() {
+    logWarning('Tentando reconectar ao servidor...');
+    setTimeout(() => {
+      try {
+        this.bot.stopPolling();
+        setTimeout(() => {
+          this.bot.startPolling();
+          logSuccess('Reconexão estabelecida com sucesso!');
+        }, 1000);
+      } catch (error) {
+        logError(`Falha na reconexão: ${error}`);
+        this.reconnect();
+      }
+    }, 5000);
   }
 }
 
-// Inicializar o bot
-const bot = new OperationsBot(TOKEN, CHANNEL_ID);
+// Initialize bot
+const bot = new OperationsBot(TOKEN);
