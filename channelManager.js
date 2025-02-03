@@ -18,8 +18,8 @@ class ChannelManager {
     if (!this.isOperating) return;
 
     try {
-      const multiplier = (Math.random() * (6.99 - 1.00) + 1.00).toFixed(2);
-      const nextOperationTime = moment().add(3, 'minutes').format('HH:mm');
+     const multiplier = (Math.random() * (6.99 - 1.00) + 1.00).toFixed(2);
+const nextOperationTime = moment().tz("Africa/Maputo").add(3, 'minutes').format('HH:mm');
 
       const message = `
 ${messageStyles.title(`🎯 NOVA OPORTUNIDADE ${this.channel.name.toUpperCase()}`)}
