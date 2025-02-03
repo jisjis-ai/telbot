@@ -125,16 +125,6 @@ class OperationsBot {
           totalOperations: 0,
           messagesSent: 0,
           dailyOperations: 0
-        },
-        customButtons: {
-          button1: {
-            text: '🎯 Apostar Agora',
-            url: channel.affiliateUrl
-          },
-          button2: {
-            text: '📝 Criar Conta',
-            url: channel.affiliateUrl
-          }
         }
       });
     });
@@ -144,23 +134,113 @@ class OperationsBot {
     
     moment.tz.setDefault(TIMEZONE);
     
-    logSuccess('Conexão estabelecida com sucesso!');
-    logSystem('Configurando manipuladores de eventos...');
-
     this.setupErrorHandlers();
     this.setupCommands();
     this.setupSchedules();
     this.setupCallbackQueries();
 
-    // Start operations for all channels if within operating hours
-    const currentHour = moment().hour();
-    if (currentHour >= START_HOUR && currentHour < END_HOUR) {
-      Object.values(CHANNELS).forEach(channel => {
-        this.startOperations(channel.id);
+    // Send initial connection message to all channels
+    Object.values(CHANNELS).forEach(channel => {
+      this.sendInitialMessage(channel.id);
+    });
+
+    logSuccess('Bot conectado com sucesso!');
+    logSuccess('Sistema Quantum totalmente operacional!');
+  }
+
+  async sendInitialMessage(channelId) {
+    const channel = Object.values(CHANNELS).find(c => c.id === channelId);
+    if (!channel) return;
+
+    const message = `
+${messageStyles.title('🤖 BOT QUANTUM SIGNALS CONECTADO')}
+
+${messageStyles.success('Sistema operacional e pronto para enviar sinais!')}
+
+${messageStyles.info('⏰ Horário de operações:')}
+Segunda a Domingo: 8h às 19h
+
+${messageStyles.warning('⚠️ Aguarde o início das operações.')}`;
+
+    await this.sendMessageWithRetry(channelId, message, {
+      parse_mode: 'HTML'
+    });
+  }
+
+  async handleMessage(msg) {
+    const chatId = msg.chat.id;
+    const text = msg.text;
+    
+    if (!text) return;
+
+    const session = this.adminSessions.get(chatId);
+
+    if (!session) {
+      if (text.startsWith('/login')) {
+        await this.sendMessageWithRetry(chatId, messageStyles.info('Digite seu usuário:'), {
+          parse_mode: 'HTML'
+        });
+        this.adminSessions.set(chatId, { step: 'waiting_username' });
+        return;
+      }
+      await this.sendMessageWithRetry(chatId, messageStyles.error('Por favor, faça login usando /login'), {
+        parse_mode: 'HTML'
       });
+      return;
     }
 
-    logSuccess('Sistema Quantum totalmente operacional!');
+    switch (session.step) {
+      case 'waiting_username':
+        if (text === ADMIN_USERNAME) {
+          await this.sendMessageWithRetry(chatId, messageStyles.info('Digite sua senha:'), {
+            parse_mode: 'HTML'
+          });
+          session.step = 'waiting_password';
+        } else {
+          await this.sendMessageWithRetry(chatId, messageStyles.error('Usuário incorreto. Tente novamente com /login'), {
+            parse_mode: 'HTML'
+          });
+          this.adminSessions.delete(chatId);
+        }
+        break;
+
+      case 'waiting_password':
+        if (text === ADMIN_PASSWORD) {
+          session.step = 'authenticated';
+          await this.sendAdminMenu(chatId);
+        } else {
+          await this.sendMessageWithRetry(chatId, messageStyles.error('Senha incorreta. Tente novamente com /login'), {
+            parse_mode: 'HTML'
+          });
+          this.adminSessions.delete(chatId);
+        }
+        break;
+
+      case 'authenticated':
+        // Handle authenticated user commands
+        break;
+    }
+
+    this.adminSessions.set(chatId, session);
+  }
+
+  async sendAdminMenu(chatId) {
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '📢 Enviar Comunicado', callback_data: 'send_announcement' }
+        ],
+        [
+          { text: '🔧 Ativar Manutenção', callback_data: 'maintenance_on' },
+          { text: '✅ Desativar Manutenção', callback_data: 'maintenance_off' }
+        ]
+      ]
+    };
+
+    await this.sendMessageWithRetry(chatId, messageStyles.title('🎛️ Painel de Controle'), {
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    });
   }
 
   setupErrorHandlers() {
@@ -373,19 +453,6 @@ class OperationsBot {
         await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
       }
     }
-  }
-
-  async handleMessage(msg) {
-    if (!msg.text) return;
-    
-    const chatId = msg.chat.id;
-    const text = msg.text;
-
-    if (text.startsWith('/')) {
-      return;
-    }
-
-    await this.sendMessageWithRetry(chatId, messageStyles.info('Comando não reconhecido.'), { parse_mode: 'HTML' });
   }
 
   async handleStart(msg) {
